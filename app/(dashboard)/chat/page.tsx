@@ -161,9 +161,9 @@ export default function ChatPage() {
     <div className="flex h-full">
       {/* ── History Sub-Sidebar ── */}
       {historyOpen && (
-        <aside className="flex w-64 shrink-0 flex-col border-r border-gray-100 bg-gray-50/50">
+        <aside className="flex w-60 shrink-0 flex-col border-r border-gray-100 bg-gray-50/50">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3.5">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
             <div className="flex items-center gap-2">
               <HugeiconsIcon icon={Clock01Icon} size={15} color="#9ca3af" strokeWidth={1.5} />
               <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
@@ -219,7 +219,7 @@ export default function ChatPage() {
       {/* ── Main Chat Area ── */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4">
+        <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-3.5">
           {/* History toggle */}
           <button
             onClick={() => setHistoryOpen((o) => !o)}
@@ -257,24 +257,24 @@ export default function ChatPage() {
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 top-10 z-50 w-52 rounded-xl border border-gray-100 bg-white py-1 shadow-lg">
+                <div className="absolute right-0 top-10 z-50 min-w-[13.5rem] rounded-xl border border-gray-100 bg-white py-1 shadow-lg">
                   <button
                     onClick={copyConversation}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                    className="flex w-full items-center gap-3 whitespace-nowrap px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <HugeiconsIcon icon={Copy01Icon} size={15} color="#6b7280" strokeWidth={1.5} />
                     Copy conversation
                   </button>
                   <button
                     onClick={exportConversation}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                    className="flex w-full items-center gap-3 whitespace-nowrap px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <HugeiconsIcon icon={Download01Icon} size={15} color="#6b7280" strokeWidth={1.5} />
                     Export as Markdown
                   </button>
                   <button
                     onClick={shareConversation}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                    className="flex w-full items-center gap-3 whitespace-nowrap px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <HugeiconsIcon icon={Share01Icon} size={15} color="#6b7280" strokeWidth={1.5} />
                     Share
@@ -285,7 +285,7 @@ export default function ChatPage() {
                       startNewConversation()
                       setMenuOpen(false)
                     }}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                    className="flex w-full items-center gap-3 whitespace-nowrap px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <HugeiconsIcon icon={Add01Icon} size={15} color="#6b7280" strokeWidth={1.5} />
                     New conversation

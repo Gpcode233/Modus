@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -25,16 +26,16 @@ export function Sidebar() {
   return (
     <aside className="flex h-full w-60 flex-col border-r border-green-100 bg-green-50">
       {/* Brand */}
-      <div className="flex items-center gap-2.5 border-b border-green-100 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-600">
-          <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 text-white" stroke="currentColor" strokeWidth={2}>
-            <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <div>
-          <span className="text-sm font-semibold text-gray-900">Modus</span>
-          <p className="text-[10px] text-green-700">Autonomous Procurement</p>
-        </div>
+      <div className="border-b border-green-100 px-5 py-4">
+        <Image
+          src="/modus-logo.jpg"
+          alt="Modus"
+          width={120}
+          height={48}
+          className="h-10 w-auto object-contain"
+          priority
+        />
+        <p className="mt-0.5 text-[10px] text-green-700">Autonomous Procurement</p>
       </div>
 
       {/* Agent status pill */}

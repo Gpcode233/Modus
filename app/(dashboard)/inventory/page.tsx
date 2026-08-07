@@ -30,7 +30,7 @@ export default async function InventoryPage() {
   const critical = items.filter((i) => i.qtyOnHand < i.reorderPoint)
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="h-full overflow-y-auto flex flex-col gap-6 p-8">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Inventory</h1>

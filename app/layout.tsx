@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   title: "Modus — Autonomous Procurement, Powered by USDC",
   description:
     "Modus is an autonomous procurement agent that monitors inventory, negotiates with suppliers, and settles payments in USDC on Arc L1.",
+  icons: {
+    icon: "/modus-logo.jpg",
+    apple: "/modus-logo.jpg",
+  },
 };
 
 export default function RootLayout({

@@ -144,7 +144,7 @@ export default async function OrdersPage() {
   const completed = orders.filter((o) => ["delivered", "cancelled", "failed"].includes(o.status))
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="h-full overflow-y-auto flex flex-col gap-6 p-8">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Orders</h1>
         <p className="mt-1 text-sm text-gray-500">
