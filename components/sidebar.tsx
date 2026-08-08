@@ -28,18 +28,18 @@ export function Sidebar() {
       {/* Brand */}
       <div className="border-b border-green-100 px-5 py-4">
         <Image
-          src="/modus-logo.jpg"
+          src="/modus.png"
           alt="Modus"
-          width={120}
-          height={48}
-          className="h-10 w-auto object-contain"
+          width={150}
+          height={150}
+          className="object-contain"
           priority
         />
-        <p className="mt-0.5 text-[10px] text-green-700">Autonomous Procurement</p>
+        {/* <p className="mt-0.5 text-[10px] text-green-700">Autonomous Procurement</p> */}
       </div>
 
       {/* Agent status pill */}
-      <div className="px-4 py-3">
+      {/* <div className="px-4 py-3">
         <div className="flex items-center gap-2 rounded-full bg-green-100 px-3 py-1.5">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
@@ -47,13 +47,13 @@ export function Sidebar() {
           </span>
           <span className="text-xs font-medium text-green-800">Agent Active</span>
         </div>
-      </div>
+      </div> */}
 
       {/* Nav */}
       <nav className="flex flex-1 flex-col gap-1 px-3 py-2">
-        <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+        {/* <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
           Navigation
-        </p>
+        </p> */}
         {navItems.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/")
           return (

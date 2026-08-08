@@ -314,6 +314,26 @@ export function advanceOrderStatus(
   return orders[idx]
 }
 
+export function recordTransaction(
+  data: Omit<Transaction, "id" | "createdAt">
+): Transaction {
+  const tx: Transaction = {
+    ...data,
+    id: `tx-${uuid()}`,
+    createdAt: new Date().toISOString(),
+  }
+  transactions.push(tx)
+  return tx
+}
+
+export function debitWallet(amountUsdc: number): void {
+  wallet.balanceUsdc = Math.max(0, wallet.balanceUsdc - amountUsdc)
+}
+
+export function creditWallet(amountUsdc: number): void {
+  wallet.balanceUsdc += amountUsdc
+}
+
 export function getInventoryContext(): string {
   const items = getInventory()
   return items

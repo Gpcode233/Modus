@@ -7,7 +7,16 @@ import {
   getWallet,
   createOrder,
   advanceOrderStatus,
+  recordTransaction,
+  debitWallet,
 } from "@/lib/store"
+import {
+  sendUsdc,
+  isPaymentConfigured,
+  getAgentAddress,
+  getUsdcBalance,
+  isArcConfigured,
+} from "@/lib/payments"
 
 export const maxDuration = 30
 
@@ -107,9 +116,14 @@ export async function POST(req: Request) {
             supplier: z.string().describe("Chosen supplier name"),
             qty: z.number().int().positive().describe("Quantity to order"),
             unitCostUsdc: z.number().positive().describe("Agreed price per unit in USDC"),
+            supplierAddress: z
+              .string()
+              .regex(/^0x[a-fA-F0-9]{40}$/)
+              .optional()
+              .describe("Supplier EVM wallet address for USDC payment (0x...). Omit if unknown."),
           })
         ),
-        execute: async ({ inventoryItemId, supplier, qty, unitCostUsdc }) => {
+        execute: async ({ inventoryItemId, supplier, qty, unitCostUsdc, supplierAddress }) => {
           const items = getInventory()
           const item = items.find((i) => i.id === inventoryItemId)
           if (!item) return { error: `Inventory item ${inventoryItemId} not found` }
@@ -131,8 +145,53 @@ export async function POST(req: Request) {
             status: "pending",
           })
 
+          // Attempt real on-chain payment if configured
+          if (isPaymentConfigured() && supplierAddress) {
+            try {
+              const result = await sendUsdc(supplierAddress, totalUsdc.toFixed(2))
+              debitWallet(totalUsdc)
+              recordTransaction({
+                type: "outbound",
+                amountUsdc: totalUsdc,
+                description: `${supplier} — ${order.poNumber}`,
+                txHash: result.txHash,
+                status: "settled",
+                orderId: order.id,
+              })
+              advanceOrderStatus(
+                order.id,
+                "processing",
+                "Payment Settled",
+                `${totalUsdc} USDC settled on Arc L1 — tx ${result.txHash.slice(0, 10)}…`
+              )
+              return {
+                poNumber: order.poNumber,
+                status: "processing",
+                totalUsdc,
+                supplier,
+                txHash: result.txHash,
+                explorerUrl: result.explorerUrl,
+                message: `${totalUsdc} USDC settled on-chain`,
+                live: true,
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "Payment failed"
+              return { error: `Order created (${order.poNumber}) but payment failed: ${msg}` }
+            }
+          }
+
+          // Fallback: simulate payment (no wallet configured or no supplier address)
           const mockTxHash = `0x${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`
           const mockBlock = Math.floor(4800000 + Math.random() * 100000)
+          debitWallet(totalUsdc)
+          recordTransaction({
+            type: "outbound",
+            amountUsdc: totalUsdc,
+            description: `${supplier} — ${order.poNumber}`,
+            txHash: mockTxHash,
+            status: "settled",
+            orderId: order.id,
+          })
           advanceOrderStatus(
             order.id,
             "processing",
@@ -147,7 +206,8 @@ export async function POST(req: Request) {
             supplier,
             txHash: mockTxHash,
             blockNumber: mockBlock,
-            message: `${totalUsdc} USDC settled on Arc L1`,
+            message: `${totalUsdc} USDC settled on Arc L1 (simulated — configure ARC_PRIVATE_KEY for live payments)`,
+            live: false,
           }
         },
       }),

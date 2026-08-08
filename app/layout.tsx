@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     "Modus is an autonomous procurement agent that monitors inventory, negotiates with suppliers, and settles payments in USDC on Arc L1.",
   icons: {
     icon: "/modus-logo.jpg",
-    apple: "/modus-logo.jpg",
+    apple: "/modus-logo.png",
   },
 };
 

@@ -1,19 +1,51 @@
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Wallet01Icon,
-  ArrowRight01Icon,
-  ArrowDown01Icon,
+  ArrowDownLeft01Icon,
+  ArrowUpRight03Icon,
+  ArchiveArrowDownIcon,
+  ArchiveArrowUpIcon,
   CheckmarkCircle01Icon,
   ShieldKeyIcon,
+  Alert01Icon,
 } from "@hugeicons/core-free-icons"
 import { getWallet, getTransactions, getThirtyDayFlow } from "@/lib/store"
-import type { AccountsData, Transaction } from "@/lib/types"
+import {
+  getAgentAddress,
+  getUsdcBalance,
+  isArcConfigured,
+  isCircleConfigured,
+  isPaymentConfigured,
+  getNetworkName,
+  fetchCircleWalletBalance,
+} from "@/lib/payments"
+import type { AccountsData, Transaction, WalletState } from "@/lib/types"
 
-async function getAccountsData(): Promise<AccountsData> {
-  const wallet = getWallet()
+async function getAccountsData(): Promise<AccountsData & { live: boolean }> {
   const transactions = getTransactions()
   const { inbound, outbound } = getThirtyDayFlow()
-  return { wallet, inboundThirtyDay: inbound, outboundThirtyDay: outbound, transactions }
+
+  if (!isPaymentConfigured()) {
+    const wallet = getWallet()
+    return { wallet, inboundThirtyDay: inbound, outboundThirtyDay: outbound, transactions, live: false }
+  }
+
+  const address = getAgentAddress()!
+  let balanceUsdc = 0
+  if (isArcConfigured()) {
+    balanceUsdc = await getUsdcBalance(address)
+  } else if (isCircleConfigured()) {
+    balanceUsdc = await fetchCircleWalletBalance(process.env.CIRCLE_WALLET_ID!)
+  }
+
+  const mock = getWallet()
+  const wallet: WalletState = {
+    address,
+    balanceUsdc,
+    spendAuthorityUsdc: mock.spendAuthorityUsdc,
+    network: getNetworkName(),
+  }
+  return { wallet, inboundThirtyDay: inbound, outboundThirtyDay: outbound, transactions, live: true }
 }
 
 function formatUsdc(n: number) {
@@ -41,7 +73,7 @@ function TransactionRow({ tx }: { tx: Transaction }) {
           }`}
         >
           <HugeiconsIcon
-            icon={isIn ? ArrowDown01Icon : ArrowRight01Icon}
+            icon={isIn ? ArrowDownLeft01Icon : ArrowUpRight03Icon}
             size={16}
             color="currentColor"
             strokeWidth={1.5}
@@ -70,16 +102,48 @@ function TransactionRow({ tx }: { tx: Transaction }) {
 
 export default async function AccountsPage() {
   const data = await getAccountsData()
-  const { wallet, inboundThirtyDay, outboundThirtyDay, transactions } = data
+  const { wallet, inboundThirtyDay, outboundThirtyDay, transactions, live } = data
 
   return (
     <div className="h-full overflow-y-auto flex flex-col gap-6 p-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Accounts</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Treasury wallet powered by Circle App Kit on {wallet.network}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Accounts</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Treasury wallet powered by Circle App Kit on {wallet.network}
+          </p>
+        </div>
+        {live && (
+          <span className="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+            Live on-chain
+          </span>
+        )}
       </div>
+
+      {/* Setup banner — shown when wallet not configured */}
+      {!live && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex items-start gap-3">
+            <HugeiconsIcon icon={Alert01Icon} size={18} color="currentColor" strokeWidth={1.5} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-900">Wallet not configured — showing demo data</p>
+              <p className="mt-1 text-xs text-amber-700">
+                To enable live USDC payments on Arc Testnet, add <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">ARC_PRIVATE_KEY</code> to <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">.env.local</code>
+              </p>
+              <div className="mt-3 rounded-lg bg-amber-100 p-3 font-mono text-xs text-amber-800 leading-relaxed">
+                <p className="font-semibold mb-1"># Generate a new wallet key:</p>
+                <p>node -e &quot;const &#123;generatePrivateKey,privateKeyToAddress&#125;=require(&apos;viem/accounts&apos;);const k=generatePrivateKey();console.log(&apos;ARC_PRIVATE_KEY=&apos;+k+&apos;\nAddress:&apos;,privateKeyToAddress(k))&quot;</p>
+                <p className="font-semibold mt-2 mb-1"># Then fund at:</p>
+                <p>https://faucet.circle.com  →  select Arc Testnet</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Balance cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -89,34 +153,46 @@ export default async function AccountsPage() {
             <span className="text-xs font-medium uppercase tracking-wide">USDC Balance</span>
           </div>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-gray-900 tabular-nums">
-            {formatUsdc(wallet.balanceUsdc)}
+            ${formatUsdc(wallet.balanceUsdc)}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">USDC · {wallet.network}</p>
-          <p className="mt-3 font-mono text-xs text-gray-400">{wallet.address}</p>
+          <p className="mt-3 font-mono text-xs text-gray-400 truncate">{wallet.address}</p>
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-2 text-gray-500">
-            <HugeiconsIcon icon={ArrowDown01Icon} size={16} color="currentColor" strokeWidth={1.5} />
+            <HugeiconsIcon icon={ArchiveArrowDownIcon} size={18} />
             <span className="text-xs font-medium uppercase tracking-wide">Inbound (30d)</span>
           </div>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-green-600 tabular-nums">
-            +{formatUsdc(inboundThirtyDay)}
+            +${formatUsdc(inboundThirtyDay)}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">USDC received</p>
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-2 text-gray-500">
-            <HugeiconsIcon icon={ArrowRight01Icon} size={16} color="currentColor" strokeWidth={1.5} />
+            <HugeiconsIcon icon={ArchiveArrowUpIcon} size={18} />
             <span className="text-xs font-medium uppercase tracking-wide">Outbound (30d)</span>
           </div>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-red-500 tabular-nums">
-            −{formatUsdc(outboundThirtyDay)}
+            −${formatUsdc(outboundThirtyDay)}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">USDC spent</p>
         </div>
       </div>
+
+      {/* Explorer link — only when live */}
+      {live && (
+        <a
+          href={`https://testnet.arcscan.app/address/${wallet.address}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-green-700 hover:text-green-900 transition-colors"
+        >
+          View on Arc Testnet Explorer →
+        </a>
+      )}
 
       {/* Spend authority */}
       <div className="flex items-center gap-3 rounded-xl border border-green-100 bg-green-50 px-5 py-3">
