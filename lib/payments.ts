@@ -15,6 +15,7 @@ const USDC_ADDRESS = "0x3600000000000000000000000000000000000000" as `0x${string
 const ARC_TESTNET_RPC = "https://rpc.testnet.arc.io"
 const USDC_DECIMALS = 18
 
+
 const publicClient = createPublicClient({
   chain: arcTestnet,
   transport: http(ARC_TESTNET_RPC),

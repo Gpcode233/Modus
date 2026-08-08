@@ -1,14 +1,13 @@
-import { anthropic } from "@ai-sdk/anthropic"
+import { createAnthropic } from "@ai-sdk/anthropic"
 import { streamText, tool, zodSchema, isStepCount } from "ai"
 import { z } from "zod"
 import {
   getInventory,
   getOrders,
-  getWallet,
+  getSpendAuthority,
   createOrder,
   advanceOrderStatus,
   recordTransaction,
-  debitWallet,
 } from "@/lib/store"
 import {
   sendUsdc,
@@ -19,6 +18,16 @@ import {
 } from "@/lib/payments"
 
 export const maxDuration = 30
+
+// Supports Agent Router by reading ANTHROPIC_BASE_URL from env.
+// Set ANTHROPIC_BASE_URL=https://agentrouter.org and ANTHROPIC_API_KEY=<agent-router-key>
+// to route through Agent Router instead of Anthropic directly.
+const provider = createAnthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  baseURL: process.env.ANTHROPIC_BASE_URL,
+})
+
+const MODEL = process.env.AI_MODEL ?? "claude-sonnet-4-6"
 
 const SYSTEM_PROMPT = `You are the Modus autonomous procurement agent — an AI that manages inventory and supplier purchasing for businesses using USDC on Arc L1 (Circle's blockchain).
 
@@ -34,11 +43,15 @@ You have access to real-time data tools. Always check the live data before answe
 export async function POST(req: Request) {
   const { messages } = await req.json()
 
-  const wallet = getWallet()
+  const spendAuthority = getSpendAuthority()
 
   const result = streamText({
-    model: anthropic("claude-sonnet-4-6"),
-    instructions: SYSTEM_PROMPT + `\n\nAutonomous spend authority: ${wallet.spendAuthorityUsdc} USDC per transaction.`,
+    model: provider(MODEL),
+    instructions:
+      SYSTEM_PROMPT +
+      (spendAuthority != null
+        ? `\n\nAutonomous spend authority: ${spendAuthority} USDC per transaction.`
+        : "\n\nNote: Autonomous spend authority has not been set by the store owner yet."),
     messages,
     tools: {
       getInventoryStatus: tool({
@@ -94,22 +107,30 @@ export async function POST(req: Request) {
       }),
 
       getWalletBalance: tool({
-        description: "Get the current USDC treasury balance and spend authority",
+        description: "Get the current live USDC treasury balance and spend authority",
         inputSchema: zodSchema(z.object({})),
         execute: async () => {
-          const w = getWallet()
+          const address = getAgentAddress()
+          if (!address) {
+            return { configured: false, message: "ARC_PRIVATE_KEY not set" }
+          }
+          let balanceUsdc = 0
+          if (isArcConfigured()) {
+            balanceUsdc = await getUsdcBalance(address)
+          }
           return {
-            address: w.address,
-            balanceUsdc: w.balanceUsdc,
-            spendAuthorityUsdc: w.spendAuthorityUsdc,
-            network: w.network,
+            address,
+            balanceUsdc,
+            spendAuthorityUsdc: getSpendAuthority(),
+            network: "Arc Testnet",
+            configured: true,
           }
         },
       }),
 
       initiateProcurement: tool({
         description:
-          "Initiate an autonomous purchase order for an inventory item. Use this when the user confirms they want to proceed with a purchase. The tool creates the order and simulates the USDC payment on Arc L1.",
+          "Initiate an autonomous purchase order for an inventory item. Use this when the user confirms they want to proceed with a purchase.",
         inputSchema: zodSchema(
           z.object({
             inventoryItemId: z.string().describe("The ID of the inventory item to reorder"),
@@ -129,9 +150,24 @@ export async function POST(req: Request) {
           if (!item) return { error: `Inventory item ${inventoryItemId} not found` }
 
           const totalUsdc = qty * unitCostUsdc
-          const w = getWallet()
-          if (totalUsdc > w.balanceUsdc) {
-            return { error: `Insufficient balance: need ${totalUsdc} USDC, have ${w.balanceUsdc} USDC` }
+          const spendAuth = getSpendAuthority()
+
+          if (spendAuth == null) {
+            return { error: "Spend authority not set. Store owner must configure it in the Accounts page." }
+          }
+          if (totalUsdc > spendAuth) {
+            return { error: `Order total (${totalUsdc} USDC) exceeds spend authority (${spendAuth} USDC). Store owner must increase the limit.` }
+          }
+
+          // Check live on-chain balance
+          if (isArcConfigured()) {
+            const address = getAgentAddress()
+            if (address) {
+              const liveBalance = await getUsdcBalance(address)
+              if (totalUsdc > liveBalance) {
+                return { error: `Insufficient balance: need ${totalUsdc} USDC, wallet has ${liveBalance} USDC` }
+              }
+            }
           }
 
           const order = createOrder({
@@ -145,11 +181,9 @@ export async function POST(req: Request) {
             status: "pending",
           })
 
-          // Attempt real on-chain payment if configured
           if (isPaymentConfigured() && supplierAddress) {
             try {
               const result = await sendUsdc(supplierAddress, totalUsdc.toFixed(2))
-              debitWallet(totalUsdc)
               recordTransaction({
                 type: "outbound",
                 amountUsdc: totalUsdc,
@@ -180,10 +214,9 @@ export async function POST(req: Request) {
             }
           }
 
-          // Fallback: simulate payment (no wallet configured or no supplier address)
+          // No wallet configured or no supplier address — simulate
           const mockTxHash = `0x${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`
           const mockBlock = Math.floor(4800000 + Math.random() * 100000)
-          debitWallet(totalUsdc)
           recordTransaction({
             type: "outbound",
             amountUsdc: totalUsdc,
@@ -206,7 +239,7 @@ export async function POST(req: Request) {
             supplier,
             txHash: mockTxHash,
             blockNumber: mockBlock,
-            message: `${totalUsdc} USDC settled on Arc L1 (simulated — configure ARC_PRIVATE_KEY for live payments)`,
+            message: `${totalUsdc} USDC settled (simulated — configure ARC_PRIVATE_KEY for live payments)`,
             live: false,
           }
         },

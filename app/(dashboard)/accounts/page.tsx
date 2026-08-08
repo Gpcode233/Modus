@@ -6,10 +6,9 @@ import {
   ArchiveArrowDownIcon,
   ArchiveArrowUpIcon,
   CheckmarkCircle01Icon,
-  ShieldKeyIcon,
   Alert01Icon,
 } from "@hugeicons/core-free-icons"
-import { getWallet, getTransactions, getThirtyDayFlow } from "@/lib/store"
+import { getTransactions, getThirtyDayFlow, getSpendAuthority } from "@/lib/store"
 import {
   getAgentAddress,
   getUsdcBalance,
@@ -19,15 +18,36 @@ import {
   getNetworkName,
   fetchCircleWalletBalance,
 } from "@/lib/payments"
-import type { AccountsData, Transaction, WalletState } from "@/lib/types"
+import { getAgentIdentity } from "@/lib/identity"
+import type { Transaction } from "@/lib/types"
+import { SpendAuthorityEditor } from "@/components/spend-authority-editor"
+import { FundWalletDialog } from "@/components/fund-wallet-dialog"
+import { IdentityCard } from "@/components/identity-card"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty"
 
-async function getAccountsData(): Promise<AccountsData & { live: boolean }> {
+async function getPageData() {
   const transactions = getTransactions()
   const { inbound, outbound } = getThirtyDayFlow()
+  const spendAuthorityUsdc = getSpendAuthority()
 
   if (!isPaymentConfigured()) {
-    const wallet = getWallet()
-    return { wallet, inboundThirtyDay: inbound, outboundThirtyDay: outbound, transactions, live: false }
+    return {
+      address: null,
+      balanceUsdc: 0,
+      network: "Arc Testnet (not configured)",
+      spendAuthorityUsdc,
+      inboundThirtyDay: inbound,
+      outboundThirtyDay: outbound,
+      transactions,
+      live: false,
+      identity: null,
+    }
   }
 
   const address = getAgentAddress()!
@@ -38,14 +58,19 @@ async function getAccountsData(): Promise<AccountsData & { live: boolean }> {
     balanceUsdc = await fetchCircleWalletBalance(process.env.CIRCLE_WALLET_ID!)
   }
 
-  const mock = getWallet()
-  const wallet: WalletState = {
+  const identity = await getAgentIdentity()
+
+  return {
     address,
     balanceUsdc,
-    spendAuthorityUsdc: mock.spendAuthorityUsdc,
     network: getNetworkName(),
+    spendAuthorityUsdc,
+    inboundThirtyDay: inbound,
+    outboundThirtyDay: outbound,
+    transactions,
+    live: true,
+    identity,
   }
-  return { wallet, inboundThirtyDay: inbound, outboundThirtyDay: outbound, transactions, live: true }
 }
 
 function formatUsdc(n: number) {
@@ -101,8 +126,8 @@ function TransactionRow({ tx }: { tx: Transaction }) {
 }
 
 export default async function AccountsPage() {
-  const data = await getAccountsData()
-  const { wallet, inboundThirtyDay, outboundThirtyDay, transactions, live } = data
+  const data = await getPageData()
+  const { address, balanceUsdc, network, spendAuthorityUsdc, inboundThirtyDay, outboundThirtyDay, transactions, live, identity } = data
 
   return (
     <div className="h-full overflow-y-auto flex flex-col gap-6 p-8">
@@ -110,7 +135,7 @@ export default async function AccountsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Accounts</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Treasury wallet powered by Circle App Kit on {wallet.network}
+            Agent treasury · {network}
           </p>
         </div>
         {live && (
@@ -124,22 +149,16 @@ export default async function AccountsPage() {
         )}
       </div>
 
-      {/* Setup banner — shown when wallet not configured */}
       {!live && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
           <div className="flex items-start gap-3">
             <HugeiconsIcon icon={Alert01Icon} size={18} color="currentColor" strokeWidth={1.5} className="text-amber-600 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm font-semibold text-amber-900">Wallet not configured — showing demo data</p>
+              <p className="text-sm font-semibold text-amber-900">Wallet not configured</p>
               <p className="mt-1 text-xs text-amber-700">
-                To enable live USDC payments on Arc Testnet, add <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">ARC_PRIVATE_KEY</code> to <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">.env.local</code>
+                Add <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">ARC_PRIVATE_KEY</code> to{" "}
+                <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">.env.local</code> to connect the agent wallet.
               </p>
-              <div className="mt-3 rounded-lg bg-amber-100 p-3 font-mono text-xs text-amber-800 leading-relaxed">
-                <p className="font-semibold mb-1"># Generate a new wallet key:</p>
-                <p>node -e &quot;const &#123;generatePrivateKey,privateKeyToAddress&#125;=require(&apos;viem/accounts&apos;);const k=generatePrivateKey();console.log(&apos;ARC_PRIVATE_KEY=&apos;+k+&apos;\nAddress:&apos;,privateKeyToAddress(k))&quot;</p>
-                <p className="font-semibold mt-2 mb-1"># Then fund at:</p>
-                <p>https://faucet.circle.com  →  select Arc Testnet</p>
-              </div>
             </div>
           </div>
         </div>
@@ -147,16 +166,22 @@ export default async function AccountsPage() {
 
       {/* Balance cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* USDC Balance */}
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-gray-500">
-            <HugeiconsIcon icon={Wallet01Icon} size={16} color="currentColor" strokeWidth={1.5} />
-            <span className="text-xs font-medium uppercase tracking-wide">USDC Balance</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-gray-500">
+              <HugeiconsIcon icon={Wallet01Icon} size={16} color="currentColor" strokeWidth={1.5} />
+              <span className="text-xs font-medium uppercase tracking-wide">USDC Balance</span>
+            </div>
+            {live && address && <FundWalletDialog agentAddress={address} />}
           </div>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-gray-900 tabular-nums">
-            ${formatUsdc(wallet.balanceUsdc)}
+            {live ? `$${formatUsdc(balanceUsdc)}` : "—"}
           </p>
-          <p className="mt-0.5 text-xs text-gray-400">USDC · {wallet.network}</p>
-          <p className="mt-3 font-mono text-xs text-gray-400 truncate">{wallet.address}</p>
+          <p className="mt-0.5 text-xs text-gray-400">USDC · {network}</p>
+          {address && (
+            <p className="mt-3 font-mono text-xs text-gray-400 truncate">{address}</p>
+          )}
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -165,7 +190,7 @@ export default async function AccountsPage() {
             <span className="text-xs font-medium uppercase tracking-wide">Inbound (30d)</span>
           </div>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-green-600 tabular-nums">
-            +${formatUsdc(inboundThirtyDay)}
+            {live ? `+$${formatUsdc(inboundThirtyDay)}` : "—"}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">USDC received</p>
         </div>
@@ -176,16 +201,16 @@ export default async function AccountsPage() {
             <span className="text-xs font-medium uppercase tracking-wide">Outbound (30d)</span>
           </div>
           <p className="mt-3 text-3xl font-semibold tracking-tight text-red-500 tabular-nums">
-            −${formatUsdc(outboundThirtyDay)}
+            {live ? `−$${formatUsdc(outboundThirtyDay)}` : "—"}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">USDC spent</p>
         </div>
       </div>
 
-      {/* Explorer link — only when live */}
-      {live && (
+      {/* Explorer link */}
+      {live && address && (
         <a
-          href={`https://testnet.arcscan.app/address/${wallet.address}`}
+          href={`https://testnet.arcscan.app/address/${address}`}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-xs text-green-700 hover:text-green-900 transition-colors"
@@ -194,20 +219,19 @@ export default async function AccountsPage() {
         </a>
       )}
 
-      {/* Spend authority */}
-      <div className="flex items-center gap-3 rounded-xl border border-green-100 bg-green-50 px-5 py-3">
-        <HugeiconsIcon
-          icon={ShieldKeyIcon}
-          size={18}
-          color="currentColor"
-          strokeWidth={1.5}
-          className="text-green-600 shrink-0"
-        />
-        <p className="text-sm text-green-800">
-          <span className="font-semibold">Autonomous spend authority:</span>{" "}
-          {formatUsdc(wallet.spendAuthorityUsdc)} USDC per transaction · enforced by treasury policy
-        </p>
-      </div>
+      {/* Spend authority — owner-set */}
+      <SpendAuthorityEditor current={spendAuthorityUsdc} />
+
+      {/* Agent identity — ERC-8004 */}
+      <IdentityCard
+        initialIdentity={identity ? {
+          registered: identity.registered,
+          tokenId: identity.tokenId,
+          address: identity.address,
+          explorerUrl: identity.explorerUrl,
+        } : null}
+        configured={isPaymentConfigured()}
+      />
 
       {/* Transactions */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
@@ -215,7 +239,17 @@ export default async function AccountsPage() {
           <h2 className="text-sm font-semibold text-gray-900">Transaction History</h2>
         </div>
         {transactions.length === 0 ? (
-          <p className="px-6 py-10 text-center text-sm text-gray-400">No transactions yet.</p>
+          <Empty className="py-12">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <HugeiconsIcon icon={ArrowUpRight03Icon} size={16} color="currentColor" strokeWidth={1.5} />
+              </EmptyMedia>
+              <EmptyTitle>No transactions yet</EmptyTitle>
+              <EmptyDescription>
+                Payments settled by the agent will appear here in real time.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <div className="divide-y divide-gray-50">
             {transactions.map((tx) => (

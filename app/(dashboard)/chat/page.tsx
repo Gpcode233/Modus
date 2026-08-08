@@ -18,6 +18,7 @@ import {
   Clock01Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
+import { ChainOfThought, toolPartsToSteps } from "@/components/ui/chain-of-thought"
 import {
   type Conversation,
   getConversations,
@@ -329,46 +330,50 @@ export default function ChatPage() {
                 />
               </div>
 
-              <div className={cn("max-w-lg", msg.role === "user" && "items-end")}>
-                {msg.parts?.map((part, i) => {
-                  if (part.type === "text") {
+              <div className={cn("max-w-lg flex flex-col gap-1.5", msg.role === "user" && "items-end")}>
+                {(() => {
+                  const parts = msg.parts
+                  if (!parts) {
                     return (
-                      <div
-                        key={i}
-                        className={cn(
-                          "rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
-                          msg.role === "assistant"
-                            ? "bg-gray-50 text-gray-800"
-                            : "bg-green-600 text-white"
-                        )}
-                      >
-                        {part.text}
+                      <div className={cn(
+                        "rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
+                        msg.role === "assistant" ? "bg-gray-50 text-gray-800" : "bg-green-600 text-white"
+                      )}>
+                        {msg.content}
                       </div>
                     )
                   }
-                  if (part.type === "tool-invocation" && part.toolInvocation.state === "result") {
-                    return (
-                      <div
-                        key={i}
-                        className="mt-1 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 font-mono text-[11px] text-gray-400"
-                      >
-                        ↳ Tool: {part.toolInvocation.toolName}
-                      </div>
-                    )
-                  }
-                  return null
-                }) ?? (
-                  <div
-                    className={cn(
-                      "rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
-                      msg.role === "assistant"
-                        ? "bg-gray-50 text-gray-800"
-                        : "bg-green-600 text-white"
-                    )}
-                  >
-                    {msg.content}
-                  </div>
-                )}
+
+                  // Collect tool invocation parts for chain-of-thought
+                  const toolParts = parts.filter((p) => p.type === "tool-invocation")
+                  const steps = toolPartsToSteps(
+                    toolParts as Array<{ type: string; toolInvocation?: { toolName: string; state: string } }>
+                  )
+
+                  return (
+                    <>
+                      {steps.length > 0 && (
+                        <ChainOfThought steps={steps} defaultOpen={steps.some((s) => s.status !== "complete")} />
+                      )}
+                      {parts.map((part, i) => {
+                        if (part.type === "text" && part.text.trim()) {
+                          return (
+                            <div
+                              key={i}
+                              className={cn(
+                                "rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
+                                msg.role === "assistant" ? "bg-gray-50 text-gray-800" : "bg-green-600 text-white"
+                              )}
+                            >
+                              {part.text}
+                            </div>
+                          )
+                        }
+                        return null
+                      })}
+                    </>
+                  )
+                })()}
               </div>
             </div>
           ))}

@@ -8,6 +8,14 @@ import {
 import { getInventory as fetchInventory } from "@/lib/store"
 import type { InventoryItem } from "@/lib/types"
 import { AddInventoryForm } from "./add-form"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyContent,
+} from "@/components/ui/empty"
 
 async function getInventory(): Promise<InventoryItem[]> {
   return fetchInventory()
@@ -92,7 +100,20 @@ export default async function InventoryPage() {
           </table>
         </div>
         {items.length === 0 && (
-          <p className="px-6 py-10 text-center text-sm text-gray-400">No inventory items yet. Add your first item.</p>
+          <Empty className="py-16">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <HugeiconsIcon icon={Package01Icon} size={18} color="currentColor" strokeWidth={1.5} />
+              </EmptyMedia>
+              <EmptyTitle>No inventory items</EmptyTitle>
+              <EmptyDescription>
+                Add your first item to start tracking stock levels and let the agent monitor reorder points.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <AddInventoryForm />
+            </EmptyContent>
+          </Empty>
         )}
       </div>
     </div>

@@ -8,7 +8,6 @@ import type {
   InventoryItem,
   PurchaseOrder,
   Transaction,
-  WalletState,
 } from "./types"
 
 function uuid() {
@@ -149,73 +148,39 @@ let orders: PurchaseOrder[] = [
   },
 ]
 
-let transactions: Transaction[] = [
-  {
-    id: "tx-001",
-    type: "outbound",
-    amountUsdc: 500,
-    description: "Northline Data Infra — PO-2026-0417",
-    txHash: "0x9f2a...c74e",
-    blockNumber: 4829117,
-    status: "settled",
-    orderId: "order-001",
-    createdAt: "2026-08-06T12:03:52Z",
-  },
-  {
-    id: "tx-002",
-    type: "outbound",
-    amountUsdc: 500,
-    description: "Vantage Rack Systems — PO-2026-0409",
-    txHash: "0x3d7c...a19f",
-    blockNumber: 4826441,
-    status: "settled",
-    orderId: "order-002",
-    createdAt: "2026-08-05T09:14:18Z",
-  },
-  {
-    id: "tx-003",
-    type: "inbound",
-    amountUsdc: 25000,
-    description: "Funding deposit — Operations",
-    txHash: "0xb812...f43a",
-    status: "settled",
-    createdAt: "2026-08-01T08:00:00Z",
-  },
-  {
-    id: "tx-004",
-    type: "outbound",
-    amountUsdc: 384,
-    description: "ColdRow Supply Co — PO-2026-0392",
-    txHash: "0x5e91...c28b",
-    blockNumber: 4820192,
-    status: "settled",
-    orderId: "order-003",
-    createdAt: "2026-07-29T14:22:09Z",
-  },
-  {
-    id: "tx-005",
-    type: "inbound",
-    amountUsdc: 37000,
-    description: "Funding deposit — Operations",
-    txHash: "0xa34d...7f61",
-    status: "settled",
-    createdAt: "2026-07-15T08:00:00Z",
-  },
-]
+let transactions: Transaction[] = []
 
-const wallet: WalletState = {
-  address: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-  balanceUsdc: 48320,
-  spendAuthorityUsdc: 500,
-  network: "Arc L1",
-}
+// Set during onboarding. Null = onboarding not yet complete.
+let storeName: string | null = null
+let onboardingComplete = false
+
+// Set by the store owner via Accounts UI or onboarding. Null = not yet configured.
+let spendAuthorityUsdc: number | null = null
 
 // ---------------------------------------------------------------------------
 // Data access functions
 // ---------------------------------------------------------------------------
 
-export function getWallet(): WalletState {
-  return { ...wallet }
+export function getStoreName(): string | null {
+  return storeName
+}
+
+export function isOnboardingComplete(): boolean {
+  return onboardingComplete
+}
+
+export function completeOnboarding(name: string, spendAuth: number): void {
+  storeName = name
+  spendAuthorityUsdc = spendAuth
+  onboardingComplete = true
+}
+
+export function getSpendAuthority(): number | null {
+  return spendAuthorityUsdc
+}
+
+export function setSpendAuthority(amount: number): void {
+  spendAuthorityUsdc = amount
 }
 
 export function getTransactions(): Transaction[] {
@@ -324,14 +289,6 @@ export function recordTransaction(
   }
   transactions.push(tx)
   return tx
-}
-
-export function debitWallet(amountUsdc: number): void {
-  wallet.balanceUsdc = Math.max(0, wallet.balanceUsdc - amountUsdc)
-}
-
-export function creditWallet(amountUsdc: number): void {
-  wallet.balanceUsdc += amountUsdc
 }
 
 export function getInventoryContext(): string {

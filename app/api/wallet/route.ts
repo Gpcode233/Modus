@@ -8,13 +8,18 @@ import {
   isCircleConfigured,
   isPaymentConfigured,
 } from "@/lib/payments"
-import { getWallet } from "@/lib/store"
+import { getSpendAuthority } from "@/lib/store"
 
 export async function GET() {
-  // Fallback to mock when nothing configured
   if (!isPaymentConfigured()) {
-    const mock = getWallet()
-    return NextResponse.json({ ...mock, configured: false, live: false })
+    return NextResponse.json({
+      address: null,
+      balanceUsdc: 0,
+      spendAuthorityUsdc: getSpendAuthority(),
+      network: "Arc Testnet (not configured)",
+      configured: false,
+      live: false,
+    })
   }
 
   const address = getAgentAddress()
@@ -29,12 +34,10 @@ export async function GET() {
     balanceUsdc = await fetchCircleWalletBalance(process.env.CIRCLE_WALLET_ID!)
   }
 
-  const mock = getWallet()
-
   return NextResponse.json({
     address,
     balanceUsdc,
-    spendAuthorityUsdc: mock.spendAuthorityUsdc,
+    spendAuthorityUsdc: getSpendAuthority(),
     network: getNetworkName(),
     configured: true,
     live: true,

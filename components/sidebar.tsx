@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -11,6 +12,7 @@ import {
   DeliveryTruck01Icon,
   Settings01Icon,
 } from "@hugeicons/core-free-icons"
+import { usePrivy } from "@privy-io/react-auth"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -22,6 +24,23 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname()
+  const { user, logout } = usePrivy()
+  const [storeName, setStoreName] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch("/api/onboarding")
+      .then((r) => r.json())
+      .then((d) => { if (d.storeName) setStoreName(d.storeName) })
+      .catch(() => {})
+  }, [])
+
+  const userEmail =
+    user?.email?.address ??
+    user?.google?.email ??
+    user?.linkedAccounts.find((a) => a.type === "email")?.address ??
+    "Agent"
+
+  const initials = userEmail.slice(0, 2).toUpperCase()
 
   return (
     <aside className="flex h-full w-60 flex-col border-r border-green-100 bg-green-50">
@@ -35,7 +54,9 @@ export function Sidebar() {
           className="object-contain"
           priority
         />
-        {/* <p className="mt-0.5 text-[10px] text-green-700">Autonomous Procurement</p> */}
+        {storeName && (
+          <p className="mt-1 truncate text-xs font-medium text-green-800">{storeName}</p>
+        )}
       </div>
 
       {/* Agent status pill */}
@@ -79,8 +100,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Bottom settings */}
-      <div className="border-t border-green-100 p-3">
+      {/* Bottom */}
+      <div className="border-t border-green-100 p-3 flex flex-col gap-1">
         <Link
           href="/settings"
           className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-500 hover:bg-green-100 hover:text-green-800 transition-colors"
@@ -88,6 +109,21 @@ export function Sidebar() {
           <HugeiconsIcon icon={Settings01Icon} size={18} color="currentColor" strokeWidth={1.5} />
           Settings
         </Link>
+        {/* User row */}
+        <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-[11px] font-semibold text-white">
+            {initials}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="truncate text-xs font-medium text-gray-700">{userEmail}</p>
+          </div>
+          <button
+            onClick={() => logout()}
+            className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </aside>
   )

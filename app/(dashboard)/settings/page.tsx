@@ -1,8 +1,11 @@
-import { getWallet } from "@/lib/store"
+import { getAgentAddress, getNetworkName, isPaymentConfigured } from "@/lib/payments"
+import { getSpendAuthority } from "@/lib/store"
 import { SettingsForm } from "./settings-form"
 
 export default async function SettingsPage() {
-  const wallet = getWallet()
+  const address = isPaymentConfigured() ? (getAgentAddress() ?? "") : ""
+  const network = getNetworkName()
+  const spendAuthority = getSpendAuthority()
 
   return (
     <div className="h-full overflow-y-auto flex flex-col gap-6 p-8">
@@ -14,9 +17,9 @@ export default async function SettingsPage() {
       </div>
 
       <SettingsForm
-        walletAddress={wallet.address}
-        network={wallet.network}
-        spendAuthority={wallet.spendAuthorityUsdc}
+        walletAddress={address}
+        network={network}
+        spendAuthority={spendAuthority}
       />
     </div>
   )

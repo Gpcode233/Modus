@@ -8,6 +8,13 @@ import {
 } from "@hugeicons/core-free-icons"
 import { getOrders as fetchOrders } from "@/lib/store"
 import type { PurchaseOrder, OrderStatus, OrderTimelineEvent } from "@/lib/types"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty"
 
 async function getOrders(): Promise<PurchaseOrder[]> {
   return fetchOrders()
@@ -153,9 +160,18 @@ export default async function OrdersPage() {
       </div>
 
       {orders.length === 0 && (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-gray-200 bg-white py-16 text-center">
-          <HugeiconsIcon icon={PackageSearch01Icon} size={40} color="#d1d5db" strokeWidth={1} />
-          <p className="text-sm text-gray-400">No purchase orders yet. The agent will create them automatically when inventory is low.</p>
+        <div className="rounded-2xl border border-gray-200 bg-white">
+          <Empty className="py-16">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <HugeiconsIcon icon={PackageSearch01Icon} size={18} color="currentColor" strokeWidth={1.5} />
+              </EmptyMedia>
+              <EmptyTitle>No purchase orders</EmptyTitle>
+              <EmptyDescription>
+                Orders appear here once the agent places them. Ask the agent in Chat to initiate a procurement.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </div>
       )}
 

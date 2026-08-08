@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 interface SettingsFormProps {
   walletAddress: string
   network: string
-  spendAuthority: number
+  spendAuthority: number | null
 }
 
 function SectionCard({
@@ -103,7 +103,7 @@ function Toggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void 
 }
 
 export function SettingsForm({ walletAddress, network, spendAuthority }: SettingsFormProps) {
-  const [authority, setAuthority] = useState(String(spendAuthority))
+  const [authority, setAuthority] = useState(spendAuthority != null ? String(spendAuthority) : "")
   const [threshold, setThreshold] = useState("40")
   const [lowStockAlerts, setLowStockAlerts] = useState(true)
   const [criticalOnly, setCriticalOnly] = useState(false)

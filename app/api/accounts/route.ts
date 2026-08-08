@@ -1,18 +1,47 @@
 import { NextResponse } from "next/server"
-import { getWallet, getTransactions, getThirtyDayFlow } from "@/lib/store"
-import type { AccountsData } from "@/lib/types"
+import { getTransactions, getThirtyDayFlow, getSpendAuthority } from "@/lib/store"
+import {
+  getAgentAddress,
+  getNetworkName,
+  getUsdcBalance,
+  fetchCircleWalletBalance,
+  isArcConfigured,
+  isCircleConfigured,
+  isPaymentConfigured,
+} from "@/lib/payments"
 
 export async function GET() {
-  const wallet = getWallet()
   const transactions = getTransactions()
   const { inbound, outbound } = getThirtyDayFlow()
 
-  const data: AccountsData = {
-    wallet,
+  let address: string | null = null
+  let balanceUsdc = 0
+  let network = "Arc Testnet (not configured)"
+  let live = false
+
+  if (isPaymentConfigured()) {
+    address = getAgentAddress()
+    network = getNetworkName()
+    live = true
+    if (address) {
+      if (isArcConfigured()) {
+        balanceUsdc = await getUsdcBalance(address)
+      } else if (isCircleConfigured()) {
+        balanceUsdc = await fetchCircleWalletBalance(process.env.CIRCLE_WALLET_ID!)
+      }
+    }
+  }
+
+  return NextResponse.json({
+    wallet: {
+      address: address ?? "0x0000000000000000000000000000000000000000",
+      balanceUsdc,
+      spendAuthorityUsdc: getSpendAuthority(),
+      network,
+    },
     inboundThirtyDay: inbound,
     outboundThirtyDay: outbound,
     transactions,
-  }
-
-  return NextResponse.json(data)
+    live,
+  })
 }
