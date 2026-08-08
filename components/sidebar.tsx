@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Wallet01Icon,
@@ -22,8 +22,13 @@ const navItems = [
   { href: "/orders", label: "Orders", icon: DeliveryTruck01Icon },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  devWalletAddress?: string | null
+}
+
+export function Sidebar({ devWalletAddress }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const { user, logout } = usePrivy()
   const [storeName, setStoreName] = useState<string | null>(null)
 
@@ -34,13 +39,27 @@ export function Sidebar() {
       .catch(() => {})
   }, [])
 
-  const userEmail =
-    user?.email?.address ??
-    user?.google?.email ??
-    user?.linkedAccounts.find((a) => a.type === "email")?.address ??
-    "Agent"
+  const isDevMode = !!devWalletAddress
 
-  const initials = userEmail.slice(0, 2).toUpperCase()
+  const userEmail = isDevMode
+    ? devWalletAddress!
+    : (user?.email?.address ??
+      user?.google?.email ??
+      user?.linkedAccounts.find((a) => a.type === "email")?.address ??
+      "Agent")
+
+  const initials = isDevMode
+    ? userEmail.slice(2, 4).toUpperCase()
+    : userEmail.slice(0, 2).toUpperCase()
+
+  function handleLogout() {
+    if (isDevMode) {
+      localStorage.removeItem("modus-dev-auth")
+      router.push("/login")
+    } else {
+      logout()
+    }
+  }
 
   return (
     <aside className="flex h-full w-60 flex-col border-r border-green-100 bg-green-50">
@@ -111,14 +130,17 @@ export function Sidebar() {
         </Link>
         {/* User row */}
         <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-[11px] font-semibold text-white">
+          <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold text-white ${isDevMode ? "bg-amber-500" : "bg-green-600"}`}>
             {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="truncate text-xs font-medium text-gray-700">{userEmail}</p>
+            {isDevMode && (
+              <p className="text-[9px] font-bold uppercase tracking-wide text-amber-600">Dev mode</p>
+            )}
+            <p className="truncate text-xs font-medium text-gray-700 font-mono">{isDevMode ? `${userEmail.slice(0, 6)}…${userEmail.slice(-4)}` : userEmail}</p>
           </div>
           <button
-            onClick={() => logout()}
+            onClick={handleLogout}
             className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors shrink-0"
           >
             Sign out

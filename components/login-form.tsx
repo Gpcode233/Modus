@@ -28,6 +28,20 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
   })
 
   const sending = emailState.status === "sending-code"
+  const isDev = process.env.NODE_ENV === "development"
+
+  async function handleDevLogin() {
+    setError(null)
+    try {
+      const res = await fetch("/api/auth/dev-login", { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Dev login failed")
+      localStorage.setItem("modus-dev-auth", data.address)
+      router.push("/accounts")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Dev login failed")
+    }
+  }
   const verifying = emailState.status === "submitting-code"
 
   async function handleEmailSubmit(e: React.FormEvent) {
@@ -86,6 +100,21 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
                     Continue with Google
                   </Button>
                 </Field>
+
+                {/* Dev-only wallet login */}
+                {isDev && (
+                  <Field>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="w-full border-dashed border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100 font-mono text-xs"
+                      onClick={handleDevLogin}
+                    >
+                      <span className="mr-1.5 rounded bg-amber-200 px-1 py-0.5 text-[10px] font-bold uppercase tracking-wide">DEV</span>
+                      Sign in with Arc wallet
+                    </Button>
+                  </Field>
+                )}
 
                 <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
                   Or continue with email
