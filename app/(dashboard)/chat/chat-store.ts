@@ -1,5 +1,3 @@
-const STORAGE_KEY = "modus_conversations"
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type StoredMessage = Record<string, any>
 
@@ -11,27 +9,31 @@ export interface Conversation {
   updatedAt: string
 }
 
-export function getConversations(): Conversation[] {
-  if (typeof window === "undefined") return []
+export async function getConversations(): Promise<Conversation[]> {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]")
+    const res = await fetch("/api/chat/conversations")
+    if (!res.ok) return []
+    return res.json()
   } catch {
     return []
   }
 }
 
-export function getConversation(id: string): Conversation | undefined {
-  return getConversations().find((c) => c.id === id)
+export async function getConversation(id: string): Promise<Conversation | undefined> {
+  const all = await getConversations()
+  return all.find((c) => c.id === id)
 }
 
-export function saveConversation(conv: Conversation): void {
-  const others = getConversations().filter((c) => c.id !== conv.id)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([conv, ...others]))
+export async function saveConversation(conv: Conversation): Promise<void> {
+  await fetch("/api/chat/conversations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(conv),
+  })
 }
 
-export function deleteConversation(id: string): void {
-  const others = getConversations().filter((c) => c.id !== id)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(others))
+export async function deleteConversation(id: string): Promise<void> {
+  await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" })
 }
 
 export function makeTitle(messages: StoredMessage[]): string {

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Wallet01Icon,
@@ -10,6 +11,7 @@ import {
   Alert01Icon,
 } from "@hugeicons/core-free-icons"
 import { getTransactions, getThirtyDayFlow, getThirtyDayTrend, getSpendAuthority } from "@/lib/store"
+import { getUserIdFromCookies } from "@/lib/auth-server"
 import {
   getAgentAddress,
   getUsdcBalance,
@@ -22,6 +24,7 @@ import {
 import { getAgentIdentity } from "@/lib/identity"
 import type { Transaction } from "@/lib/types"
 import { SpendAuthorityEditor } from "@/components/spend-authority-editor"
+import { NetworkTabs } from "@/components/network-tabs"
 import { FundWalletDialog } from "@/components/fund-wallet-dialog"
 import { AccountsFlowChart } from "@/components/accounts-flow-chart"
 import { IdentityCard } from "@/components/identity-card"
@@ -35,10 +38,15 @@ import {
 } from "@/components/ui/empty"
 
 async function getPageData() {
-  const transactions = getTransactions()
-  const { inbound, outbound } = getThirtyDayFlow()
-  const { inbound: inboundTrend, outbound: outboundTrend, dates: trendDates } = getThirtyDayTrend()
-  const spendAuthorityUsdc = getSpendAuthority()
+  const userId = await getUserIdFromCookies()
+  if (!userId) return null
+
+  const [transactions, { inbound, outbound }, { inbound: inboundTrend, outbound: outboundTrend, dates: trendDates }, spendAuthorityUsdc] = await Promise.all([
+    getTransactions(userId),
+    getThirtyDayFlow(userId),
+    getThirtyDayTrend(userId),
+    getSpendAuthority(userId),
+  ])
 
   if (!isPaymentConfigured()) {
     return {
@@ -137,6 +145,7 @@ function TransactionRow({ tx }: { tx: Transaction }) {
 
 export default async function AccountsPage() {
   const data = await getPageData()
+  if (!data) { redirect("/login") }
   const { address, balanceUsdc, network, spendAuthorityUsdc, inboundThirtyDay, outboundThirtyDay, inboundTrend, outboundTrend, trendDates, transactions, live, identity } = data
 
   return (
@@ -144,19 +153,20 @@ export default async function AccountsPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Accounts</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Agent treasury · {network}
-          </p>
+          <p className="mt-1 text-sm text-gray-500">Agent treasury · {network}</p>
         </div>
-        {live && (
-          <span className="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+        <div className="flex items-center gap-3">
+          <NetworkTabs />
+          {live && (
+            <span className="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-medium text-green-700">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+              </span>
+              Live on-chain
             </span>
-            Live on-chain
-          </span>
-        )}
+          )}
+        </div>
       </div>
 
       {!live && (

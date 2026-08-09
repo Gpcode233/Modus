@@ -9,10 +9,17 @@ import {
   isCircleConfigured,
   isPaymentConfigured,
 } from "@/lib/payments"
+import { getUserIdFromRequest } from "@/lib/auth-server"
 
-export async function GET() {
-  const transactions = getTransactions()
-  const { inbound, outbound } = getThirtyDayFlow()
+export async function GET(req: Request) {
+  const userId = await getUserIdFromRequest(req)
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const [transactions, { inbound, outbound }, spendAuthorityUsdc] = await Promise.all([
+    getTransactions(userId),
+    getThirtyDayFlow(userId),
+    getSpendAuthority(userId),
+  ])
 
   let address: string | null = null
   let balanceUsdc = 0
@@ -36,7 +43,7 @@ export async function GET() {
     wallet: {
       address: address ?? "0x0000000000000000000000000000000000000000",
       balanceUsdc,
-      spendAuthorityUsdc: getSpendAuthority(),
+      spendAuthorityUsdc,
       network,
     },
     inboundThirtyDay: inbound,

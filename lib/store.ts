@@ -1,335 +1,431 @@
 /**
- * In-memory data store. Replace with a real database (e.g. Postgres, Prisma)
- * before production. The exported functions are the data access interface —
- * only the implementation below changes when you swap the backing store.
+ * DB-backed data store. All functions are async and scoped to a userId.
+ * SQL injection protection is provided by Drizzle ORM's parameterized queries.
  */
 
-import type {
-  InventoryItem,
-  PurchaseOrder,
-  Transaction,
-} from "./types"
+import { db, users, inventory, orders, transactions, chatConversations } from "@/lib/db"
+import { eq, desc, and, gte, sql } from "drizzle-orm"
+import type { InventoryItem, PurchaseOrder, Transaction, OrderTimelineEvent } from "./types"
 
 function uuid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }
 
 // ---------------------------------------------------------------------------
-// Seed data
+// User / onboarding
 // ---------------------------------------------------------------------------
 
-let inventory: InventoryItem[] = [
-  {
-    id: "item-001",
-    sku: "SRV-RACK-42U",
-    name: "Server Rack — Dell PowerEdge R750 (42U)",
-    category: "Hardware",
-    location: "Warehouse A — Aisle 12",
-    qtyOnHand: 2,
-    reorderPoint: 8,
-    unitCostUsdc: 2875,
-    createdAt: "2026-07-01T00:00:00Z",
-    updatedAt: "2026-08-06T12:03:41Z",
-  },
-  {
-    id: "item-002",
-    sku: "PSU-800W",
-    name: "Redundant PSU — 800W Hot-Swap",
-    category: "Hardware",
-    location: "Warehouse A — Aisle 14",
-    qtyOnHand: 6,
-    reorderPoint: 10,
-    unitCostUsdc: 89,
-    createdAt: "2026-07-01T00:00:00Z",
-    updatedAt: "2026-08-05T09:14:00Z",
-  },
-  {
-    id: "item-003",
-    sku: "NIC-25G-SFP28",
-    name: "25G SFP28 Network Interface Card",
-    category: "Networking",
-    location: "Warehouse B — Aisle 3",
-    qtyOnHand: 5,
-    reorderPoint: 12,
-    unitCostUsdc: 128,
-    createdAt: "2026-07-01T00:00:00Z",
-    updatedAt: "2026-08-04T16:30:00Z",
-  },
-  {
-    id: "item-004",
-    sku: "CAB-CAT6A-50M",
-    name: "CAT6A Ethernet Cable — 50m",
-    category: "Networking",
-    location: "Warehouse B — Aisle 7",
-    qtyOnHand: 45,
-    reorderPoint: 20,
-    unitCostUsdc: 18,
-    createdAt: "2026-07-01T00:00:00Z",
-    updatedAt: "2026-08-01T00:00:00Z",
-  },
-  {
-    id: "item-005",
-    sku: "SSD-NVME-4TB",
-    name: "NVMe SSD — 4TB PCIe Gen 4",
-    category: "Storage",
-    location: "Warehouse A — Aisle 8",
-    qtyOnHand: 18,
-    reorderPoint: 10,
-    unitCostUsdc: 340,
-    createdAt: "2026-07-10T00:00:00Z",
-    updatedAt: "2026-08-03T11:00:00Z",
-  },
-]
+async function ensureUser(userId: string): Promise<void> {
+  await db
+    .insert(users)
+    .values({ id: userId })
+    .onConflictDoNothing()
+}
 
-let orders: PurchaseOrder[] = [
-  {
-    id: "order-001",
-    poNumber: "PO-2026-0417",
-    inventoryItemId: "item-001",
-    sku: "SRV-RACK-42U",
-    itemName: "Server Rack — Dell PowerEdge R750 (42U)",
-    supplier: "Northline Data Infra",
-    qty: 1,
-    unitCostUsdc: 500,
-    totalUsdc: 500,
-    status: "processing",
-    txHash: "0x9f2a7b3e4c1d85f6a92b0e7f3c4d1a2b3e4f5c6d7e8f9a0b1c2d3e4f5a6b7c74e",
-    blockNumber: 4829117,
-    timeline: [
-      { status: "pending", label: "Order Created", timestamp: "2026-08-06T12:03:49Z", note: "Agent initiated purchase" },
-      { status: "processing", label: "Payment Settled", timestamp: "2026-08-06T12:03:52Z", note: "500 USDC settled on Arc L1 — block #4,829,117" },
-    ],
-    createdAt: "2026-08-06T12:03:49Z",
-    updatedAt: "2026-08-06T12:03:52Z",
-  },
-  {
-    id: "order-002",
-    poNumber: "PO-2026-0409",
-    inventoryItemId: "item-001",
-    sku: "SRV-RACK-42U",
-    itemName: "Server Rack — Dell PowerEdge R750 (42U)",
-    supplier: "Vantage Rack Systems",
-    qty: 1,
-    unitCostUsdc: 500,
-    totalUsdc: 500,
-    status: "in_transit",
-    txHash: "0x3d7ca4f2e1b09c8d5e6f7a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2a19f",
-    blockNumber: 4826441,
-    timeline: [
-      { status: "pending", label: "Order Created", timestamp: "2026-08-05T09:14:00Z" },
-      { status: "processing", label: "Payment Settled", timestamp: "2026-08-05T09:14:18Z", note: "500 USDC settled on Arc L1" },
-      { status: "in_transit", label: "Dispatched by Supplier", timestamp: "2026-08-06T08:00:00Z", note: "Tracking: VR-20260806-7741" },
-    ],
-    createdAt: "2026-08-05T09:14:00Z",
-    updatedAt: "2026-08-06T08:00:00Z",
-  },
-  {
-    id: "order-003",
-    poNumber: "PO-2026-0392",
-    inventoryItemId: "item-003",
-    sku: "NIC-25G-SFP28",
-    itemName: "25G SFP28 Network Interface Card",
-    supplier: "ColdRow Supply Co",
-    qty: 3,
-    unitCostUsdc: 128,
-    totalUsdc: 384,
-    status: "delivered",
-    txHash: "0x5e91c3a2b4d6f8e0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3b28b",
-    blockNumber: 4820192,
-    timeline: [
-      { status: "pending", label: "Order Created", timestamp: "2026-07-29T14:22:00Z" },
-      { status: "processing", label: "Payment Settled", timestamp: "2026-07-29T14:22:09Z" },
-      { status: "in_transit", label: "Dispatched", timestamp: "2026-07-30T07:30:00Z" },
-      { status: "out_for_delivery", label: "Out for Delivery", timestamp: "2026-08-01T09:00:00Z" },
-      { status: "delivered", label: "Delivered", timestamp: "2026-08-01T14:45:00Z", note: "Signed by: J. Chen — Warehouse B" },
-    ],
-    createdAt: "2026-07-29T14:22:00Z",
-    updatedAt: "2026-08-01T14:45:00Z",
-  },
-]
+export async function getStoreName(userId: string): Promise<string | null> {
+  await ensureUser(userId)
+  const row = await db.select({ storeName: users.storeName }).from(users).where(eq(users.id, userId)).limit(1)
+  return row[0]?.storeName ?? null
+}
 
-let transactions: Transaction[] = []
+export async function isOnboardingComplete(userId: string): Promise<boolean> {
+  await ensureUser(userId)
+  const row = await db.select({ onboardingComplete: users.onboardingComplete }).from(users).where(eq(users.id, userId)).limit(1)
+  return row[0]?.onboardingComplete ?? false
+}
 
-// Set during onboarding. Null = onboarding not yet complete.
-let storeName: string | null = null
-let onboardingComplete = false
+export async function completeOnboarding(
+  userId: string,
+  name: string,
+  spendAuth: number,
+  seedInventoryItems?: Omit<InventoryItem, "id" | "createdAt" | "updatedAt">[]
+): Promise<void> {
+  await ensureUser(userId)
+  await db
+    .update(users)
+    .set({ storeName: name, spendAuthorityUsdc: String(spendAuth), onboardingComplete: true, updatedAt: new Date() })
+    .where(eq(users.id, userId))
 
-// Set by the store owner via Accounts UI or onboarding. Null = not yet configured.
-let spendAuthorityUsdc: number | null = null
+  // Seed demo inventory if provided and user has none yet
+  const existing = await db.select({ id: inventory.id }).from(inventory).where(eq(inventory.userId, userId)).limit(1)
+  if (existing.length === 0 && seedInventoryItems) {
+    for (const item of seedInventoryItems) {
+      await db.insert(inventory).values({
+        id: `item-${uuid()}`,
+        userId,
+        sku: item.sku,
+        name: item.name,
+        category: item.category,
+        location: item.location,
+        qtyOnHand: item.qtyOnHand,
+        reorderPoint: item.reorderPoint,
+        unitCostUsdc: String(item.unitCostUsdc),
+      })
+    }
+  }
+}
+
+export async function getSpendAuthority(userId: string): Promise<number | null> {
+  await ensureUser(userId)
+  const row = await db.select({ val: users.spendAuthorityUsdc }).from(users).where(eq(users.id, userId)).limit(1)
+  const v = row[0]?.val
+  return v != null ? parseFloat(v) : null
+}
+
+export async function setSpendAuthority(userId: string, amount: number): Promise<void> {
+  await ensureUser(userId)
+  await db
+    .update(users)
+    .set({ spendAuthorityUsdc: String(amount), updatedAt: new Date() })
+    .where(eq(users.id, userId))
+}
 
 // ---------------------------------------------------------------------------
-// Data access functions
+// Transactions
 // ---------------------------------------------------------------------------
 
-export function getStoreName(): string | null {
-  return storeName
+export async function getTransactions(userId: string): Promise<Transaction[]> {
+  const rows = await db
+    .select()
+    .from(transactions)
+    .where(eq(transactions.userId, userId))
+    .orderBy(desc(transactions.createdAt))
+  return rows.map(rowToTransaction)
 }
 
-export function isOnboardingComplete(): boolean {
-  return onboardingComplete
-}
-
-export function completeOnboarding(name: string, spendAuth: number): void {
-  storeName = name
-  spendAuthorityUsdc = spendAuth
-  onboardingComplete = true
-}
-
-export function getSpendAuthority(): number | null {
-  return spendAuthorityUsdc
-}
-
-export function setSpendAuthority(amount: number): void {
-  spendAuthorityUsdc = amount
-}
-
-export function getTransactions(): Transaction[] {
-  return [...transactions].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  )
-}
-
-export function getThirtyDayFlow() {
+export async function getThirtyDayFlow(userId: string): Promise<{ inbound: number; outbound: number }> {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  const recent = transactions.filter((t) => new Date(t.createdAt) >= cutoff)
-  const inbound = recent.filter((t) => t.type === "inbound").reduce((s, t) => s + t.amountUsdc, 0)
-  const outbound = recent.filter((t) => t.type === "outbound").reduce((s, t) => s + t.amountUsdc, 0)
+  const rows = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), gte(transactions.createdAt, cutoff)))
+  const inbound = rows.filter((r) => r.type === "inbound").reduce((s, r) => s + parseFloat(r.amountUsdc), 0)
+  const outbound = rows.filter((r) => r.type === "outbound").reduce((s, r) => s + parseFloat(r.amountUsdc), 0)
   return { inbound, outbound }
 }
 
-export function getThirtyDayTrend() {
+export async function getThirtyDayTrend(userId: string): Promise<{ inbound: number[]; outbound: number[]; dates: string[] }> {
   const now = new Date()
   now.setHours(0, 0, 0, 0)
-
-  const dates = Array.from({ length: 30 }, (_, index) => {
-    const date = new Date(now)
-    date.setDate(now.getDate() - (29 - index))
-    return date.toISOString().slice(0, 10)
+  const dates = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(now)
+    d.setDate(now.getDate() - (29 - i))
+    return d.toISOString().slice(0, 10)
   })
 
+  const cutoff = new Date(now)
+  cutoff.setDate(now.getDate() - 29)
+  const rows = await db
+    .select()
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), gte(transactions.createdAt, cutoff)))
+
   const inbound = dates.map((date) =>
-    transactions
-      .filter((t) => t.type === "inbound" && t.createdAt.startsWith(date))
-      .reduce((sum, transaction) => sum + transaction.amountUsdc, 0)
+    rows.filter((r) => r.type === "inbound" && r.createdAt.toISOString().startsWith(date))
+        .reduce((s, r) => s + parseFloat(r.amountUsdc), 0)
   )
-
   const outbound = dates.map((date) =>
-    transactions
-      .filter((t) => t.type === "outbound" && t.createdAt.startsWith(date))
-      .reduce((sum, transaction) => sum + transaction.amountUsdc, 0)
+    rows.filter((r) => r.type === "outbound" && r.createdAt.toISOString().startsWith(date))
+        .reduce((s, r) => s + parseFloat(r.amountUsdc), 0)
   )
-
   return { inbound, outbound, dates }
 }
 
-export function getInventory(): InventoryItem[] {
-  return [...inventory].sort((a, b) => {
-    const severityA = a.qtyOnHand / a.reorderPoint
-    const severityB = b.qtyOnHand / b.reorderPoint
-    return severityA - severityB
+export async function recordTransaction(
+  userId: string,
+  data: Omit<Transaction, "id" | "createdAt">
+): Promise<Transaction> {
+  await ensureUser(userId)
+  const id = `tx-${uuid()}`
+  await db.insert(transactions).values({
+    id,
+    userId,
+    type: data.type,
+    amountUsdc: String(data.amountUsdc),
+    description: data.description,
+    txHash: data.txHash,
+    blockNumber: data.blockNumber,
+    status: data.status,
+    orderId: data.orderId,
   })
+  const row = await db.select().from(transactions).where(eq(transactions.id, id)).limit(1)
+  return rowToTransaction(row[0])
 }
 
-export function getInventoryItem(id: string): InventoryItem | undefined {
-  return inventory.find((i) => i.id === id)
+// ---------------------------------------------------------------------------
+// Inventory
+// ---------------------------------------------------------------------------
+
+export async function getInventory(userId: string): Promise<InventoryItem[]> {
+  const rows = await db.select().from(inventory).where(eq(inventory.userId, userId))
+  return rows
+    .map(rowToInventoryItem)
+    .sort((a, b) => a.qtyOnHand / a.reorderPoint - b.qtyOnHand / b.reorderPoint)
 }
 
-export function createInventoryItem(
+export async function getInventoryItem(userId: string, id: string): Promise<InventoryItem | undefined> {
+  const rows = await db
+    .select()
+    .from(inventory)
+    .where(and(eq(inventory.userId, userId), eq(inventory.id, id)))
+    .limit(1)
+  return rows[0] ? rowToInventoryItem(rows[0]) : undefined
+}
+
+export async function createInventoryItem(
+  userId: string,
   data: Omit<InventoryItem, "id" | "createdAt" | "updatedAt">
-): InventoryItem {
-  const item: InventoryItem = {
-    ...data,
-    id: `item-${uuid()}`,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-  inventory.push(item)
-  return item
+): Promise<InventoryItem> {
+  await ensureUser(userId)
+  const id = `item-${uuid()}`
+  await db.insert(inventory).values({
+    id,
+    userId,
+    sku: data.sku,
+    name: data.name,
+    category: data.category,
+    location: data.location,
+    qtyOnHand: data.qtyOnHand,
+    reorderPoint: data.reorderPoint,
+    unitCostUsdc: String(data.unitCostUsdc),
+  })
+  const row = await db.select().from(inventory).where(eq(inventory.id, id)).limit(1)
+  return rowToInventoryItem(row[0])
 }
 
-export function updateInventoryItem(
+export async function updateInventoryItem(
+  userId: string,
   id: string,
   data: Partial<Omit<InventoryItem, "id" | "createdAt">>
-): InventoryItem | null {
-  const idx = inventory.findIndex((i) => i.id === id)
-  if (idx === -1) return null
-  inventory[idx] = { ...inventory[idx], ...data, updatedAt: new Date().toISOString() }
-  return inventory[idx]
+): Promise<InventoryItem | null> {
+  const set: Record<string, unknown> = { updatedAt: new Date() }
+  if (data.sku !== undefined) set.sku = data.sku
+  if (data.name !== undefined) set.name = data.name
+  if (data.category !== undefined) set.category = data.category
+  if (data.location !== undefined) set.location = data.location
+  if (data.qtyOnHand !== undefined) set.qtyOnHand = data.qtyOnHand
+  if (data.reorderPoint !== undefined) set.reorderPoint = data.reorderPoint
+  if (data.unitCostUsdc !== undefined) set.unitCostUsdc = String(data.unitCostUsdc)
+
+  await db
+    .update(inventory)
+    .set(set)
+    .where(and(eq(inventory.userId, userId), eq(inventory.id, id)))
+  const row = await db.select().from(inventory).where(and(eq(inventory.userId, userId), eq(inventory.id, id))).limit(1)
+  return row[0] ? rowToInventoryItem(row[0]) : null
 }
 
-export function getOrders(): PurchaseOrder[] {
-  return [...orders].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  )
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+export async function getOrders(userId: string): Promise<PurchaseOrder[]> {
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(eq(orders.userId, userId))
+    .orderBy(desc(orders.createdAt))
+  return rows.map(rowToOrder)
 }
 
-export function getOrder(id: string): PurchaseOrder | undefined {
-  return orders.find((o) => o.id === id)
+export async function getOrder(userId: string, id: string): Promise<PurchaseOrder | undefined> {
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.userId, userId), eq(orders.id, id)))
+    .limit(1)
+  return rows[0] ? rowToOrder(rows[0]) : undefined
 }
 
-export function createOrder(
+export async function createOrder(
+  userId: string,
   data: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt" | "updatedAt" | "timeline">
-): PurchaseOrder {
+): Promise<PurchaseOrder> {
+  await ensureUser(userId)
+  const id = `order-${uuid()}`
   const poNumber = `PO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`
-  const order: PurchaseOrder = {
-    ...data,
-    id: `order-${uuid()}`,
+  const timeline: OrderTimelineEvent[] = [
+    { status: "pending", label: "Order Created", timestamp: new Date().toISOString(), note: "Autonomous agent initiated purchase" },
+  ]
+  await db.insert(orders).values({
+    id,
+    userId,
     poNumber,
-    timeline: [
-      {
-        status: "pending",
-        label: "Order Created",
-        timestamp: new Date().toISOString(),
-        note: "Autonomous agent initiated purchase",
-      },
-    ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }
-  orders.push(order)
-  return order
+    inventoryItemId: data.inventoryItemId,
+    sku: data.sku,
+    itemName: data.itemName,
+    supplier: data.supplier,
+    qty: data.qty,
+    unitCostUsdc: String(data.unitCostUsdc),
+    totalUsdc: String(data.totalUsdc),
+    status: data.status,
+    txHash: data.txHash,
+    blockNumber: data.blockNumber,
+    timeline,
+  })
+  const row = await db.select().from(orders).where(eq(orders.id, id)).limit(1)
+  return rowToOrder(row[0])
 }
 
-export function advanceOrderStatus(
+export async function advanceOrderStatus(
+  userId: string,
   id: string,
   status: PurchaseOrder["status"],
   label: string,
   note?: string
-): PurchaseOrder | null {
-  const idx = orders.findIndex((o) => o.id === id)
-  if (idx === -1) return null
-  orders[idx].status = status
-  orders[idx].timeline.push({ status, label, timestamp: new Date().toISOString(), note })
-  orders[idx].updatedAt = new Date().toISOString()
-  return orders[idx]
+): Promise<PurchaseOrder | null> {
+  const rows = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.userId, userId), eq(orders.id, id)))
+    .limit(1)
+  if (!rows[0]) return null
+
+  const timeline = (rows[0].timeline as OrderTimelineEvent[]) ?? []
+  timeline.push({ status, label, timestamp: new Date().toISOString(), note })
+
+  await db
+    .update(orders)
+    .set({ status, timeline, updatedAt: new Date() })
+    .where(and(eq(orders.userId, userId), eq(orders.id, id)))
+
+  const updated = await db.select().from(orders).where(eq(orders.id, id)).limit(1)
+  return updated[0] ? rowToOrder(updated[0]) : null
 }
 
-export function recordTransaction(
-  data: Omit<Transaction, "id" | "createdAt">
-): Transaction {
-  const tx: Transaction = {
-    ...data,
-    id: `tx-${uuid()}`,
-    createdAt: new Date().toISOString(),
-  }
-  transactions.push(tx)
-  return tx
+// ---------------------------------------------------------------------------
+// Chat conversations
+// ---------------------------------------------------------------------------
+
+export interface StoredConversation {
+  id: string
+  title: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messages: Record<string, any>[]
+  createdAt: string
+  updatedAt: string
 }
 
-export function getInventoryContext(): string {
-  const items = getInventory()
+export async function getChatConversations(userId: string): Promise<StoredConversation[]> {
+  await ensureUser(userId)
+  const rows = await db
+    .select()
+    .from(chatConversations)
+    .where(eq(chatConversations.userId, userId))
+    .orderBy(desc(chatConversations.updatedAt))
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    messages: (r.messages as Record<string, any>[]) ?? [],
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+    updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : String(r.updatedAt),
+  }))
+}
+
+export async function saveChatConversation(userId: string, conv: StoredConversation): Promise<void> {
+  await ensureUser(userId)
+  await db
+    .insert(chatConversations)
+    .values({
+      id: conv.id,
+      userId,
+      title: conv.title,
+      messages: conv.messages,
+      createdAt: new Date(conv.createdAt),
+      updatedAt: new Date(conv.updatedAt),
+    })
+    .onConflictDoUpdate({
+      target: chatConversations.id,
+      set: {
+        title: conv.title,
+        messages: conv.messages,
+        updatedAt: new Date(conv.updatedAt),
+      },
+    })
+}
+
+export async function deleteChatConversation(userId: string, id: string): Promise<void> {
+  await db
+    .delete(chatConversations)
+    .where(and(eq(chatConversations.userId, userId), eq(chatConversations.id, id)))
+}
+
+// ---------------------------------------------------------------------------
+// Context strings for AI
+// ---------------------------------------------------------------------------
+
+export async function getInventoryContext(userId: string): Promise<string> {
+  const items = await getInventory(userId)
   return items
     .map((item) => {
       const ratio = item.qtyOnHand / item.reorderPoint
       const status = ratio < 0.4 ? "CRITICAL" : ratio < 1 ? "LOW" : "OK"
-      return `SKU: ${item.sku} | Name: ${item.name} | Qty: ${item.qtyOnHand} | Reorder point: ${item.reorderPoint} | Status: ${status} | Unit cost: $${item.unitCostUsdc} USDC | Location: ${item.location}`
+      return `SKU: ${item.sku} | Name: ${item.name} | Qty: ${item.qtyOnHand} | Reorder: ${item.reorderPoint} | Status: ${status} | Cost: $${item.unitCostUsdc} USDC | Location: ${item.location}`
     })
     .join("\n")
 }
 
-export function getOrdersContext(): string {
-  const orders = getOrders().slice(0, 10)
-  return orders
+export async function getOrdersContext(userId: string): Promise<string> {
+  const list = await getOrders(userId)
+  return list
+    .slice(0, 10)
     .map((o) => `PO: ${o.poNumber} | Item: ${o.itemName} | Supplier: ${o.supplier} | Qty: ${o.qty} | Total: ${o.totalUsdc} USDC | Status: ${o.status.toUpperCase()}`)
     .join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// Row mappers (DB → domain types)
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToInventoryItem(row: any): InventoryItem {
+  return {
+    id: row.id,
+    sku: row.sku,
+    name: row.name,
+    category: row.category ?? "",
+    location: row.location ?? "",
+    qtyOnHand: row.qtyOnHand ?? 0,
+    reorderPoint: row.reorderPoint ?? 0,
+    unitCostUsdc: parseFloat(row.unitCostUsdc ?? "0"),
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToOrder(row: any): PurchaseOrder {
+  return {
+    id: row.id,
+    poNumber: row.poNumber,
+    inventoryItemId: row.inventoryItemId ?? "",
+    sku: row.sku ?? "",
+    itemName: row.itemName ?? "",
+    supplier: row.supplier ?? "",
+    qty: row.qty ?? 0,
+    unitCostUsdc: parseFloat(row.unitCostUsdc ?? "0"),
+    totalUsdc: parseFloat(row.totalUsdc ?? "0"),
+    status: row.status as PurchaseOrder["status"],
+    txHash: row.txHash ?? undefined,
+    blockNumber: row.blockNumber ?? undefined,
+    timeline: (row.timeline as OrderTimelineEvent[]) ?? [],
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+    updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToTransaction(row: any): Transaction {
+  return {
+    id: row.id,
+    type: row.type as Transaction["type"],
+    amountUsdc: parseFloat(row.amountUsdc ?? "0"),
+    description: row.description ?? "",
+    txHash: row.txHash ?? "",
+    blockNumber: row.blockNumber ?? undefined,
+    status: row.status as Transaction["status"],
+    orderId: row.orderId ?? undefined,
+    createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : row.createdAt,
+  }
 }

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { isOnboardingComplete, getStoreName, completeOnboarding, createInventoryItem } from "@/lib/store"
+import { isOnboardingComplete, getStoreName, completeOnboarding } from "@/lib/store"
+import { getUserIdFromRequest } from "@/lib/auth-server"
 
-const body = z.object({
+const bodySchema = z.object({
   storeName: z.string().min(1).max(100),
   spendAuthorityUsdc: z.number().positive(),
   inventory: z
@@ -21,22 +22,24 @@ const body = z.object({
     .default([]),
 })
 
-export async function GET() {
+export async function GET(req: Request) {
+  const userId = await getUserIdFromRequest(req)
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   return NextResponse.json({
-    complete: isOnboardingComplete(),
-    storeName: getStoreName(),
+    complete: await isOnboardingComplete(userId),
+    storeName: await getStoreName(userId),
   })
 }
 
 export async function POST(req: Request) {
-  const parsed = body.safeParse(await req.json())
+  const userId = await getUserIdFromRequest(req)
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const parsed = bodySchema.safeParse(await req.json())
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
   const { storeName, spendAuthorityUsdc, inventory } = parsed.data
-  completeOnboarding(storeName, spendAuthorityUsdc)
-  for (const item of inventory) {
-    createInventoryItem(item)
-  }
+  await completeOnboarding(userId, storeName, spendAuthorityUsdc, inventory)
   return NextResponse.json({ ok: true })
 }

@@ -7,6 +7,8 @@ import {
   PackageSearch01Icon,
 } from "@hugeicons/core-free-icons"
 import { getOrders as fetchOrders } from "@/lib/store"
+import { getUserIdFromCookies } from "@/lib/auth-server"
+import { redirect } from "next/navigation"
 import type { PurchaseOrder, OrderStatus, OrderTimelineEvent } from "@/lib/types"
 import {
   Empty,
@@ -17,7 +19,9 @@ import {
 } from "@/components/ui/empty"
 
 async function getOrders(): Promise<PurchaseOrder[]> {
-  return fetchOrders()
+  const userId = await getUserIdFromCookies()
+  if (!userId) redirect("/login")
+  return fetchOrders(userId)
 }
 
 const STATUS_CONFIG: Record<

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 
 type Step = "initial" | "otp"
 
-export function LoginForm({ className, ...props }: React.ComponentProps<"div">) {
+export function LoginForm({ className, mode = "signin", ...props }: React.ComponentProps<"div"> & { mode?: "signin" | "signup" }) {
   const router = useRouter()
   const [step, setStep] = useState<Step>("initial")
   const [email, setEmail] = useState("")
@@ -71,8 +71,14 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
         <CardHeader className="text-center">
           {step === "initial" ? (
             <>
-              <CardTitle className="text-xl">Sign in to Modus</CardTitle>
-              <CardDescription>Connect with Google or use your email</CardDescription>
+              <CardTitle className="text-xl">
+                {mode === "signup" ? "Create your account" : "Sign in to Modus"}
+              </CardTitle>
+              <CardDescription>
+                {mode === "signup"
+                  ? "An Arc-compatible wallet is created automatically for you"
+                  : "Connect with Google or use your email"}
+              </CardDescription>
             </>
           ) : (
             <>
@@ -196,7 +202,19 @@ export function LoginForm({ className, ...props }: React.ComponentProps<"div">) 
       </Card>
 
       <FieldDescription className="px-6 text-center">
-        By signing in you agree to our{" "}
+        {mode === "signup" ? (
+          <>Already have an account?{" "}
+            <a href="/login" className="underline underline-offset-4 hover:text-primary font-medium">Sign in</a>
+          </>
+        ) : (
+          <>New to Modus?{" "}
+            <a href="/signup" className="underline underline-offset-4 hover:text-primary font-medium">Create account</a>
+          </>
+        )}
+      </FieldDescription>
+
+      <FieldDescription className="px-6 text-center">
+        By continuing you agree to our{" "}
         <a href="#" className="underline underline-offset-4 hover:text-primary">Terms of Service</a>{" "}
         and{" "}
         <a href="#" className="underline underline-offset-4 hover:text-primary">Privacy Policy</a>.

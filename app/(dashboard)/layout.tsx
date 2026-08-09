@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { usePrivy } from "@privy-io/react-auth"
 import { Sidebar } from "@/components/sidebar"
@@ -22,8 +22,8 @@ export default function DashboardLayout({
   const router = useRouter()
   const [devAuth, setDevAuth] = useState<string | null>(null)
   const [devChecked, setDevChecked] = useState(false)
+  const onboardingChecked = useRef(false)
 
-  // Check dev auth on mount (client-only)
   useEffect(() => {
     setDevAuth(getDevAuth())
     setDevChecked(true)
@@ -37,7 +37,9 @@ export default function DashboardLayout({
       router.push("/login")
       return
     }
-    if (ready && isAuthenticated) {
+    // Only check onboarding once per session, not on every navigation
+    if (ready && isAuthenticated && !onboardingChecked.current) {
+      onboardingChecked.current = true
       fetch("/api/onboarding")
         .then((r) => r.json())
         .then((data) => {

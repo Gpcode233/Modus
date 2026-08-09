@@ -9,13 +9,17 @@ import {
   isPaymentConfigured,
 } from "@/lib/payments"
 import { getSpendAuthority } from "@/lib/store"
+import { getUserIdFromRequest } from "@/lib/auth-server"
 
-export async function GET() {
+export async function GET(req: Request) {
+  const userId = await getUserIdFromRequest(req)
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
   if (!isPaymentConfigured()) {
     return NextResponse.json({
       address: null,
       balanceUsdc: 0,
-      spendAuthorityUsdc: getSpendAuthority(),
+      spendAuthorityUsdc: await getSpendAuthority(userId),
       network: "Arc Testnet (not configured)",
       configured: false,
       live: false,
@@ -37,7 +41,7 @@ export async function GET() {
   return NextResponse.json({
     address,
     balanceUsdc,
-    spendAuthorityUsdc: getSpendAuthority(),
+    spendAuthorityUsdc: await getSpendAuthority(userId),
     network: getNetworkName(),
     configured: true,
     live: true,

@@ -6,6 +6,8 @@ import {
   AlertDiamondIcon,
 } from "@hugeicons/core-free-icons"
 import { getInventory as fetchInventory } from "@/lib/store"
+import { getUserIdFromCookies } from "@/lib/auth-server"
+import { redirect } from "next/navigation"
 import type { InventoryItem } from "@/lib/types"
 import { AddInventoryForm } from "./add-form"
 import {
@@ -18,7 +20,9 @@ import {
 } from "@/components/ui/empty"
 
 async function getInventory(): Promise<InventoryItem[]> {
-  return fetchInventory()
+  const userId = await getUserIdFromCookies()
+  if (!userId) redirect("/login")
+  return fetchInventory(userId)
 }
 
 function statusConfig(item: InventoryItem) {

@@ -60,7 +60,7 @@ function newId() {
 
 export default function ChatPage() {
   const [convId, setConvId] = useState(newId)
-  const [conversations, setConversations] = useState<ConvType[]>(() => getConversations())
+  const [conversations, setConversations] = useState<ConvType[]>([])
   const [historyOpen, setHistoryOpen] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -73,19 +73,25 @@ export default function ChatPage() {
 
   const isLoading = status === "submitted" || status === "streaming"
 
+  // Load conversations from DB on mount
+  useEffect(() => {
+    getConversations().then(setConversations).catch(() => {})
+  }, [])
+
   // Persist conversation whenever messages change
   useEffect(() => {
     if (messages.length === 0) return
-    const existing = getConversations().find((c) => c.id === convId)
     const conv: ConvType = {
       id: convId,
       title: makeTitle(messages as UIMessage[]),
       messages: messages as UIMessage[],
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      createdAt: conversations.find((c) => c.id === convId)?.createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
-    saveConversation(conv)
-    setConversations(getConversations())
+    // Update local state immediately
+    setConversations((prev) => [conv, ...prev.filter((c) => c.id !== convId)])
+    // Persist to DB in background
+    saveConversation(conv).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages])
 
@@ -120,8 +126,8 @@ export default function ChatPage() {
 
   function handleDeleteConv(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    deleteConversation(id)
-    setConversations(getConversations())
+    setConversations((prev) => prev.filter((c) => c.id !== id))
+    deleteConversation(id).catch(() => {})
     if (id === convId) startNewConversation()
   }
 

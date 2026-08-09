@@ -2,8 +2,9 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { sendUsdc, isPaymentConfigured } from "@/lib/payments"
 import { recordTransaction, advanceOrderStatus } from "@/lib/store"
+import { getUserIdFromRequest } from "@/lib/auth-server"
 
-const body = z.object({
+const bodySchema = z.object({
   to: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Invalid EVM address"),
   amount: z.string().regex(/^\d+(\.\d+)?$/, "Invalid amount"),
   description: z.string().min(1),
@@ -11,6 +12,9 @@ const body = z.object({
 })
 
 export async function POST(req: Request) {
+  const userId = await getUserIdFromRequest(req)
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
   if (!isPaymentConfigured()) {
     return NextResponse.json(
       { error: "Payment not configured. Set ARC_PRIVATE_KEY or CIRCLE_* env vars." },
@@ -18,7 +22,7 @@ export async function POST(req: Request) {
     )
   }
 
-  const parsed = body.safeParse(await req.json())
+  const parsed = bodySchema.safeParse(await req.json())
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
@@ -28,7 +32,7 @@ export async function POST(req: Request) {
   try {
     const result = await sendUsdc(to, amount)
 
-    const tx = recordTransaction({
+    const tx = await recordTransaction(userId, {
       type: "outbound",
       amountUsdc: parseFloat(amount),
       description,
@@ -38,7 +42,8 @@ export async function POST(req: Request) {
     })
 
     if (orderId) {
-      advanceOrderStatus(
+      await advanceOrderStatus(
+        userId,
         orderId,
         "processing",
         "Payment Settled",
