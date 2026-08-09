@@ -1,32 +1,51 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, Fragment, useCallback } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BubbleChatSparkIcon,
-  ArrowRight01Icon,
-  User02Icon,
-  AiSettingIcon,
+  Robot02Icon,
   Add01Icon,
   MoreVerticalIcon,
   Copy01Icon,
   Download01Icon,
   Share01Icon,
   Delete01Icon,
-  SidebarLeft01Icon,
   Clock01Icon,
+  Alert01Icon,
 } from "@hugeicons/core-free-icons"
 import { cn } from "@/lib/utils"
 import { ChainOfThought, toolPartsToSteps } from "@/components/ui/chain-of-thought"
 import {
-  type Conversation,
+  Message,
+  MessageContent,
+  MessageResponse,
+  MessageActions,
+  MessageAction,
+} from "@/components/ai-elements/message"
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+  ConversationEmptyState,
+} from "@/components/ai-elements/conversation"
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputFooter,
+  PromptInputTools,
+  PromptInputSubmit,
+  type PromptInputMessage,
+} from "@/components/ai-elements/prompt-input"
+import {
+  type Conversation as ConvType,
   getConversations,
   saveConversation,
   deleteConversation,
   makeTitle,
 } from "./chat-store"
-import type { Message } from "@ai-sdk/react"
+import type { UIMessage } from "ai"
 
 const SUGGESTIONS = [
   "What inventory items are critically low?",
@@ -41,28 +60,27 @@ function newId() {
 
 export default function ChatPage() {
   const [convId, setConvId] = useState(newId)
-  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [conversations, setConversations] = useState<ConvType[]>(() => getConversations())
   const [historyOpen, setHistoryOpen] = useState(true)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, append, setMessages } =
-    useChat({ api: "/api/chat" })
+  const { messages, status, append, setMessages, stop, error } = useChat({
+    api: "/api/chat",
+    onError: (err) => setErrorMsg(err.message),
+  })
 
-  // Load history from localStorage on mount
-  useEffect(() => {
-    setConversations(getConversations())
-  }, [])
+  const isLoading = status === "submitted" || status === "streaming"
 
   // Persist conversation whenever messages change
   useEffect(() => {
     if (messages.length === 0) return
     const existing = getConversations().find((c) => c.id === convId)
-    const conv: Conversation = {
+    const conv: ConvType = {
       id: convId,
-      title: makeTitle(messages),
-      messages: messages,
+      title: makeTitle(messages as UIMessage[]),
+      messages: messages as UIMessage[],
       createdAt: existing?.createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -71,10 +89,10 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages])
 
-  // Scroll to bottom on new messages
+  // Clear error when user starts typing (new message)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isLoading])
+    if (isLoading) setErrorMsg(null)
+  }, [isLoading])
 
   // Close menu on outside click
   useEffect(() => {
@@ -90,12 +108,14 @@ export default function ChatPage() {
   function startNewConversation() {
     setConvId(newId())
     setMessages([])
+    setErrorMsg(null)
   }
 
-  function loadConversation(conv: Conversation) {
+  function loadConversation(conv: ConvType) {
     setConvId(conv.id)
-    // UIMessage[] serialised and re-hydrated; Message[] is compatible at runtime
-    setMessages(conv.messages as unknown as Message[])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setMessages(conv.messages as any)
+    setErrorMsg(null)
   }
 
   function handleDeleteConv(id: string, e: React.MouseEvent) {
@@ -105,13 +125,18 @@ export default function ChatPage() {
     if (id === convId) startNewConversation()
   }
 
+  function handleSubmit(msg: PromptInputMessage) {
+    if (!msg.text.trim()) return
+    append({ role: "user", content: msg.text })
+  }
+
   function copyConversation() {
     const text = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => {
         const label = m.role === "user" ? "You" : "Modus"
-        const content = typeof m.content === "string" ? m.content : "[tool result]"
-        return `${label}: ${content}`
+        const content = m.parts?.find((p: { type: string }) => p.type === "text") as { type: string; text: string } | undefined
+        return `${label}: ${content?.text ?? "[tool result]"}`
       })
       .join("\n\n")
     navigator.clipboard.writeText(text)
@@ -123,8 +148,8 @@ export default function ChatPage() {
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => {
         const label = m.role === "user" ? "**You**" : "**Modus Agent**"
-        const content = typeof m.content === "string" ? m.content : "*[tool result]*"
-        return `${label}\n\n${content}`
+        const content = m.parts?.find((p: { type: string }) => p.type === "text") as { type: string; text: string } | undefined
+        return `${label}\n\n${content?.text ?? "*[tool result]*"}`
       })
     const md = `# Modus Chat Export\n\n${sections.join("\n\n---\n\n")}`
     const blob = new Blob([md], { type: "text/markdown" })
@@ -142,8 +167,8 @@ export default function ChatPage() {
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => {
         const label = m.role === "user" ? "You" : "Modus"
-        const content = typeof m.content === "string" ? m.content : "[tool result]"
-        return `${label}: ${content}`
+        const content = m.parts?.find((p: { type: string }) => p.type === "text") as { type: string; text: string } | undefined
+        return `${label}: ${content?.text ?? "[tool result]"}`
       })
       .join("\n\n")
     if (navigator.share) {
@@ -154,16 +179,11 @@ export default function ChatPage() {
     setMenuOpen(false)
   }
 
-  function sendSuggestion(text: string) {
-    append({ role: "user", content: text })
-  }
-
   return (
     <div className="flex h-full">
       {/* ── History Sub-Sidebar ── */}
       {historyOpen && (
         <aside className="flex w-60 shrink-0 flex-col border-r border-gray-100 bg-gray-50/50">
-          {/* Header */}
           <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
             <div className="flex items-center gap-2">
               <HugeiconsIcon icon={Clock01Icon} size={15} color="#9ca3af" strokeWidth={1.5} />
@@ -180,7 +200,6 @@ export default function ChatPage() {
             </button>
           </div>
 
-          {/* Conversation list */}
           <div className="flex-1 overflow-y-auto py-2">
             {conversations.length === 0 ? (
               <p className="px-4 py-4 text-center text-xs text-gray-400">No past conversations</p>
@@ -197,7 +216,7 @@ export default function ChatPage() {
                   )}
                 >
                   <HugeiconsIcon
-                    icon={BubbleChatSparkIcon}
+                    icon={Robot02Icon}
                     size={13}
                     color={conv.id === convId ? "#16a34a" : "#d1d5db"}
                     strokeWidth={1.5}
@@ -205,7 +224,7 @@ export default function ChatPage() {
                   <span className="flex-1 truncate text-xs leading-relaxed">{conv.title}</span>
                   <button
                     onClick={(e) => handleDeleteConv(conv.id, e)}
-                    title="Delete conversation"
+                    title="Delete"
                     className="hidden h-5 w-5 items-center justify-center rounded text-gray-400 transition-colors hover:text-red-500 group-hover:flex"
                   >
                     <HugeiconsIcon icon={Delete01Icon} size={12} color="currentColor" strokeWidth={1.5} />
@@ -218,21 +237,19 @@ export default function ChatPage() {
       )}
 
       {/* ── Main Chat Area ── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-3.5">
-          {/* History toggle */}
+        <div className="flex items-center gap-2 border-b border-gray-100 px-5 py-3.5 shrink-0">
           <button
             onClick={() => setHistoryOpen((o) => !o)}
             title={historyOpen ? "Hide history" : "Show history"}
             className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
           >
-            <HugeiconsIcon icon={SidebarLeft01Icon} size={18} color="currentColor" strokeWidth={1.5} />
+            <HugeiconsIcon icon={Robot02Icon} size={18} color="currentColor" strokeWidth={1.5} />
           </button>
 
-          {/* Agent identity */}
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-green-600">
-            <HugeiconsIcon icon={BubbleChatSparkIcon} size={18} color="white" strokeWidth={1.5} />
+            <HugeiconsIcon icon={Robot02Icon} size={18} color="white" strokeWidth={1.5} />
           </div>
           <div>
             <h1 className="text-sm font-semibold text-gray-900">Modus Agent</h1>
@@ -240,13 +257,13 @@ export default function ChatPage() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* Online badge */}
             <div className="flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
-              <span className="text-xs font-medium text-green-700">Online</span>
+              <span className={cn("h-1.5 w-1.5 rounded-full", isLoading ? "animate-pulse bg-amber-500" : "animate-pulse bg-green-500")} />
+              <span className={cn("text-xs font-medium", isLoading ? "text-amber-700" : "text-green-700")}>
+                {isLoading ? "Thinking…" : "Online"}
+              </span>
             </div>
 
-            {/* Three-dot menu */}
             <div className="relative" ref={menuRef}>
               <button
                 onClick={() => setMenuOpen((o) => !o)}
@@ -282,10 +299,7 @@ export default function ChatPage() {
                   </button>
                   <hr className="my-1 border-gray-100" />
                   <button
-                    onClick={() => {
-                      startNewConversation()
-                      setMenuOpen(false)
-                    }}
+                    onClick={() => { startNewConversation(); setMenuOpen(false) }}
                     className="flex w-full items-center gap-3 whitespace-nowrap px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <HugeiconsIcon icon={Add01Icon} size={15} color="#6b7280" strokeWidth={1.5} />
@@ -297,112 +311,81 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-8 py-6">
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center gap-2 py-12 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-green-600">
-                <HugeiconsIcon icon={BubbleChatSparkIcon} size={24} color="white" strokeWidth={1.5} />
-              </div>
-              <p className="mt-2 text-sm font-medium text-gray-700">Modus Agent is ready</p>
-              <p className="text-xs text-gray-400">
-                Ask me about inventory, orders, or wallet status — or instruct me to take action.
-              </p>
-            </div>
-          )}
+        {/* Error banner */}
+        {(errorMsg || error) && (
+          <div className="shrink-0 flex items-start gap-2 border-b border-red-100 bg-red-50 px-5 py-3">
+            <HugeiconsIcon icon={Alert01Icon} size={15} color="#ef4444" strokeWidth={1.5} className="mt-0.5 shrink-0" />
+            <p className="text-xs text-red-700">{errorMsg ?? error?.message}</p>
+          </div>
+        )}
 
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={cn("flex items-start gap-3", msg.role === "user" && "flex-row-reverse")}
-            >
-              <div
-                className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-                  msg.role === "assistant" ? "bg-green-600" : "bg-gray-200"
-                )}
-              >
-                <HugeiconsIcon
-                  icon={msg.role === "assistant" ? AiSettingIcon : User02Icon}
-                  size={16}
-                  color={msg.role === "assistant" ? "white" : "#6b7280"}
-                  strokeWidth={1.5}
-                />
-              </div>
+        {/* Conversation */}
+        <Conversation className="flex-1">
+          <ConversationContent>
+            {messages.length === 0 && !isLoading ? (
+              <ConversationEmptyState
+                icon={<HugeiconsIcon icon={BubbleChatSparkIcon} size={28} color="currentColor" strokeWidth={1.5} />}
+                title="Modus Agent is ready"
+                description="Ask me about inventory, orders, or wallet status — or instruct me to take action."
+              />
+            ) : (
+              messages.filter((msg) => msg.role !== "data").map((msg) => {
+                const parts = msg.parts ?? []
+                const toolParts = parts.filter((p: { type: string }) => p.type === "tool-invocation")
+                const steps = toolPartsToSteps(
+                  toolParts as Array<{ type: string; toolInvocation?: { toolName: string; state: string } }>
+                )
 
-              <div className={cn("max-w-lg flex flex-col gap-1.5", msg.role === "user" && "items-end")}>
-                {(() => {
-                  const parts = msg.parts
-                  if (!parts) {
-                    return (
-                      <div className={cn(
-                        "rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
-                        msg.role === "assistant" ? "bg-gray-50 text-gray-800" : "bg-green-600 text-white"
-                      )}>
-                        {msg.content}
-                      </div>
-                    )
-                  }
+                return (
+                  <Fragment key={msg.id}>
+                    {steps.length > 0 && msg.role === "assistant" && (
+                      <ChainOfThought
+                        steps={steps}
+                        defaultOpen={steps.some((s) => s.status !== "complete")}
+                      />
+                    )}
+                    {parts.map((part: { type: string; text?: string }, i: number) => {
+                      if (part.type === "text" && part.text?.trim()) {
+                        return (
+                          <Message key={`${msg.id}-${i}`} from={msg.role as "user" | "assistant" | "system"}>
+                            <MessageContent>
+                              <MessageResponse>{part.text}</MessageResponse>
+                            </MessageContent>
+                          </Message>
+                        )
+                      }
+                      return null
+                    })}
+                  </Fragment>
+                )
+              })
+            )}
 
-                  // Collect tool invocation parts for chain-of-thought
-                  const toolParts = parts.filter((p) => p.type === "tool-invocation")
-                  const steps = toolPartsToSteps(
-                    toolParts as Array<{ type: string; toolInvocation?: { toolName: string; state: string } }>
-                  )
-
-                  return (
-                    <>
-                      {steps.length > 0 && (
-                        <ChainOfThought steps={steps} defaultOpen={steps.some((s) => s.status !== "complete")} />
-                      )}
-                      {parts.map((part, i) => {
-                        if (part.type === "text" && part.text.trim()) {
-                          return (
-                            <div
-                              key={i}
-                              className={cn(
-                                "rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap",
-                                msg.role === "assistant" ? "bg-gray-50 text-gray-800" : "bg-green-600 text-white"
-                              )}
-                            >
-                              {part.text}
-                            </div>
-                          )
-                        }
-                        return null
-                      })}
-                    </>
-                  )
-                })()}
-              </div>
-            </div>
-          ))}
-
-          {isLoading && (
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-600">
-                <HugeiconsIcon icon={AiSettingIcon} size={16} color="white" strokeWidth={1.5} />
-              </div>
-              <div className="rounded-2xl bg-gray-50 px-4 py-3">
-                <div className="flex gap-1">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+            {isLoading && (
+              <div className="flex items-center gap-2 py-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600">
+                  <HugeiconsIcon icon={Robot02Icon} size={14} color="white" strokeWidth={1.5} />
+                </div>
+                <div className="rounded-2xl bg-gray-50 px-4 py-3">
+                  <div className="flex gap-1">
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-
-          <div ref={bottomRef} />
-        </div>
+            )}
+          </ConversationContent>
+          <ConversationScrollButton />
+        </Conversation>
 
         {/* Suggestions */}
-        {messages.length === 0 && (
-          <div className="flex flex-wrap gap-2 px-8 pb-3">
+        {messages.length === 0 && !isLoading && (
+          <div className="shrink-0 flex flex-wrap gap-2 px-8 pb-3">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
-                onClick={() => sendSuggestion(s)}
+                onClick={() => append({ role: "user", content: s })}
                 className="rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100"
               >
                 {s}
@@ -412,25 +395,20 @@ export default function ChatPage() {
         )}
 
         {/* Input */}
-        <div className="border-t border-gray-100 px-8 py-4">
-          <form
+        <div className="shrink-0 border-t border-gray-100 px-6 py-4">
+          <PromptInput
             onSubmit={handleSubmit}
-            className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 transition-colors focus-within:border-green-400 focus-within:bg-white"
+            className="rounded-2xl border border-gray-200 bg-gray-50 focus-within:border-green-400 focus-within:bg-white transition-colors"
           >
-            <input
-              value={input}
-              onChange={handleInputChange}
-              placeholder="Ask the agent anything..."
-              className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 outline-none"
+            <PromptInputTextarea
+              placeholder="Ask the agent anything…"
+              className="min-h-10 max-h-40 bg-transparent px-4 pt-3"
             />
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-600 text-white transition-colors hover:bg-green-700 disabled:opacity-40"
-            >
-              <HugeiconsIcon icon={ArrowRight01Icon} size={16} color="white" strokeWidth={2} />
-            </button>
-          </form>
+            <PromptInputFooter className="px-3 pb-2">
+              <PromptInputTools />
+              <PromptInputSubmit status={status} onStop={stop} />
+            </PromptInputFooter>
+          </PromptInput>
         </div>
       </div>
     </div>

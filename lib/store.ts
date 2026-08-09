@@ -197,6 +197,31 @@ export function getThirtyDayFlow() {
   return { inbound, outbound }
 }
 
+export function getThirtyDayTrend() {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const dates = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date(now)
+    date.setDate(now.getDate() - (29 - index))
+    return date.toISOString().slice(0, 10)
+  })
+
+  const inbound = dates.map((date) =>
+    transactions
+      .filter((t) => t.type === "inbound" && t.createdAt.startsWith(date))
+      .reduce((sum, transaction) => sum + transaction.amountUsdc, 0)
+  )
+
+  const outbound = dates.map((date) =>
+    transactions
+      .filter((t) => t.type === "outbound" && t.createdAt.startsWith(date))
+      .reduce((sum, transaction) => sum + transaction.amountUsdc, 0)
+  )
+
+  return { inbound, outbound, dates }
+}
+
 export function getInventory(): InventoryItem[] {
   return [...inventory].sort((a, b) => {
     const severityA = a.qtyOnHand / a.reorderPoint

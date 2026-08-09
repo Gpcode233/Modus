@@ -6,12 +6,11 @@
  *  2. Circle Programmable Wallets  (CIRCLE_API_KEY + CIRCLE_ENTITY_SECRET + CIRCLE_WALLET_ID)
  *  3. Mock / not configured
  */
-import { createPublicClient, http, erc20Abi, formatUnits } from "viem"
+import { createPublicClient, http, formatUnits } from "viem"
 import { arcTestnet } from "viem/chains"
 import { privateKeyToAccount } from "viem/accounts"
 
-// Arc Testnet USDC — 18 decimals (native gas token on Arc)
-const USDC_ADDRESS = "0x3600000000000000000000000000000000000000" as `0x${string}`
+// Arc Testnet — USDC is the native coin (18 decimals), read via getBalance not ERC-20 balanceOf
 const ARC_TESTNET_RPC = "https://rpc.testnet.arc.io"
 const USDC_DECIMALS = 18
 
@@ -63,12 +62,8 @@ export function getNetworkName(): string {
 
 export async function getUsdcBalance(address: string): Promise<number> {
   try {
-    const raw = await publicClient.readContract({
-      address: USDC_ADDRESS,
-      abi: erc20Abi,
-      functionName: "balanceOf",
-      args: [address as `0x${string}`],
-    })
+    // USDC is the native coin on Arc (not ERC-20) — read via getBalance
+    const raw = await publicClient.getBalance({ address: address as `0x${string}` })
     return parseFloat(formatUnits(raw, USDC_DECIMALS))
   } catch {
     return 0

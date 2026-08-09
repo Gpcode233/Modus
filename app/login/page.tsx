@@ -20,10 +20,10 @@ export default function LoginPage() {
         {/* Modus branding */}
         <div className="flex flex-col items-center gap-1 self-center">
           <Image
-            src="/modus-logo.png"
+            src="/modus.png"
             alt="Modus"
-            width={140}
-            height={56}
+            width={150}
+            height={150}
             className="h-14 w-auto object-contain"
             priority
           />

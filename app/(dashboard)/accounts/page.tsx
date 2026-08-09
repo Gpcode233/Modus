@@ -4,11 +4,12 @@ import {
   ArrowDownLeft01Icon,
   ArrowUpRight03Icon,
   ArchiveArrowDownIcon,
+  Invoice03Icon,
   ArchiveArrowUpIcon,
   CheckmarkCircle01Icon,
   Alert01Icon,
 } from "@hugeicons/core-free-icons"
-import { getTransactions, getThirtyDayFlow, getSpendAuthority } from "@/lib/store"
+import { getTransactions, getThirtyDayFlow, getThirtyDayTrend, getSpendAuthority } from "@/lib/store"
 import {
   getAgentAddress,
   getUsdcBalance,
@@ -22,7 +23,9 @@ import { getAgentIdentity } from "@/lib/identity"
 import type { Transaction } from "@/lib/types"
 import { SpendAuthorityEditor } from "@/components/spend-authority-editor"
 import { FundWalletDialog } from "@/components/fund-wallet-dialog"
+import { AccountsFlowChart } from "@/components/accounts-flow-chart"
 import { IdentityCard } from "@/components/identity-card"
+import { RefreshBalanceButton } from "@/components/refresh-balance-button"
 import {
   Empty,
   EmptyHeader,
@@ -34,6 +37,7 @@ import {
 async function getPageData() {
   const transactions = getTransactions()
   const { inbound, outbound } = getThirtyDayFlow()
+  const { inbound: inboundTrend, outbound: outboundTrend, dates: trendDates } = getThirtyDayTrend()
   const spendAuthorityUsdc = getSpendAuthority()
 
   if (!isPaymentConfigured()) {
@@ -44,6 +48,9 @@ async function getPageData() {
       spendAuthorityUsdc,
       inboundThirtyDay: inbound,
       outboundThirtyDay: outbound,
+      inboundTrend,
+      outboundTrend,
+      trendDates,
       transactions,
       live: false,
       identity: null,
@@ -67,6 +74,9 @@ async function getPageData() {
     spendAuthorityUsdc,
     inboundThirtyDay: inbound,
     outboundThirtyDay: outbound,
+    inboundTrend,
+    outboundTrend,
+    trendDates,
     transactions,
     live: true,
     identity,
@@ -127,7 +137,7 @@ function TransactionRow({ tx }: { tx: Transaction }) {
 
 export default async function AccountsPage() {
   const data = await getPageData()
-  const { address, balanceUsdc, network, spendAuthorityUsdc, inboundThirtyDay, outboundThirtyDay, transactions, live, identity } = data
+  const { address, balanceUsdc, network, spendAuthorityUsdc, inboundThirtyDay, outboundThirtyDay, inboundTrend, outboundTrend, trendDates, transactions, live, identity } = data
 
   return (
     <div className="h-full overflow-y-auto flex flex-col gap-6 p-8">
@@ -175,9 +185,12 @@ export default async function AccountsPage() {
             </div>
             {live && address && <FundWalletDialog agentAddress={address} />}
           </div>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-gray-900 tabular-nums">
-            {live ? `$${formatUsdc(balanceUsdc)}` : "—"}
-          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <p className="text-3xl font-semibold tracking-tight text-gray-900 tabular-nums">
+              {live ? `$${formatUsdc(balanceUsdc)}` : "—"}
+            </p>
+            {live && <RefreshBalanceButton />}
+          </div>
           <p className="mt-0.5 text-xs text-gray-400">USDC · {network}</p>
           {address && (
             <p className="mt-3 font-mono text-xs text-gray-400 truncate">{address}</p>
@@ -193,6 +206,7 @@ export default async function AccountsPage() {
             {live ? `+$${formatUsdc(inboundThirtyDay)}` : "—"}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">USDC received</p>
+          <AccountsFlowChart series={inboundTrend} dates={trendDates} color="green" />
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -204,6 +218,7 @@ export default async function AccountsPage() {
             {live ? `−$${formatUsdc(outboundThirtyDay)}` : "—"}
           </p>
           <p className="mt-0.5 text-xs text-gray-400">USDC spent</p>
+          <AccountsFlowChart series={outboundTrend} dates={trendDates} color="red" />
         </div>
       </div>
 
@@ -242,7 +257,7 @@ export default async function AccountsPage() {
           <Empty className="py-12">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <HugeiconsIcon icon={ArrowUpRight03Icon} size={16} color="currentColor" strokeWidth={1.5} />
+                <HugeiconsIcon icon={Invoice03Icon} size={39} color="currentColor" strokeWidth={1.5} />
               </EmptyMedia>
               <EmptyTitle>No transactions yet</EmptyTitle>
               <EmptyDescription>

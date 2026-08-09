@@ -45,6 +45,7 @@ export async function POST(req: Request) {
 
   const spendAuthority = getSpendAuthority()
 
+  try {
   const result = streamText({
     model: provider(MODEL),
     instructions:
@@ -249,4 +250,11 @@ export async function POST(req: Request) {
   })
 
   return result.toUIMessageStreamResponse()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error"
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
 }
