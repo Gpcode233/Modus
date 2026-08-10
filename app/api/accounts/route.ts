@@ -1,42 +1,23 @@
 import { NextResponse } from "next/server"
-import { getTransactions, getThirtyDayFlow, getSpendAuthority } from "@/lib/store"
-import {
-  getAgentAddress,
-  getNetworkName,
-  getUsdcBalance,
-  fetchCircleWalletBalance,
-  isArcConfigured,
-  isCircleConfigured,
-  isPaymentConfigured,
-} from "@/lib/payments"
+import { getTransactions, getThirtyDayFlow, getSpendAuthority, getUserWallet } from "@/lib/store"
+import { getNetworkName, getUsdcBalance } from "@/lib/payments"
 import { getUserIdFromRequest } from "@/lib/auth-server"
 
 export async function GET(req: Request) {
   const userId = await getUserIdFromRequest(req)
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const [transactions, { inbound, outbound }, spendAuthorityUsdc] = await Promise.all([
+  const [transactions, { inbound, outbound }, spendAuthorityUsdc, wallet] = await Promise.all([
     getTransactions(userId),
     getThirtyDayFlow(userId),
     getSpendAuthority(userId),
+    getUserWallet(userId),
   ])
 
-  let address: string | null = null
+  const address = wallet?.address ?? null
   let balanceUsdc = 0
-  let network = "Arc Testnet (not configured)"
-  let live = false
-
-  if (isPaymentConfigured()) {
-    address = getAgentAddress()
-    network = getNetworkName()
-    live = true
-    if (address) {
-      if (isArcConfigured()) {
-        balanceUsdc = await getUsdcBalance(address)
-      } else if (isCircleConfigured()) {
-        balanceUsdc = await fetchCircleWalletBalance(process.env.CIRCLE_WALLET_ID!)
-      }
-    }
+  if (address) {
+    balanceUsdc = await getUsdcBalance(address)
   }
 
   return NextResponse.json({
@@ -44,11 +25,11 @@ export async function GET(req: Request) {
       address: address ?? "0x0000000000000000000000000000000000000000",
       balanceUsdc,
       spendAuthorityUsdc,
-      network,
+      network: getNetworkName(),
     },
     inboundThirtyDay: inbound,
     outboundThirtyDay: outbound,
     transactions,
-    live,
+    live: !!address,
   })
 }
