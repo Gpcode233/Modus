@@ -50,7 +50,7 @@ async function getPageData() {
     balanceUsdc = await getUsdcBalance(address)
   }
 
-  const identity = address ? await getAgentIdentity() : null
+  const identity = (wallet?.privateKey && address) ? await getAgentIdentity(wallet.privateKey, address) : null
 
   return {
     address,

@@ -57,7 +57,7 @@ export function IdentityCard({ initialIdentity, configured }: Props) {
 
       {!configured ? (
         <p className="text-sm text-gray-400">
-          Configure <code className="rounded bg-gray-100 px-1 font-mono text-xs">ARC_PRIVATE_KEY</code> to register your agent&apos;s onchain identity.
+          Wallet not ready. Refresh to register your agent&apos;s onchain identity.
         </p>
       ) : identity?.registered ? (
         <div className="space-y-3">

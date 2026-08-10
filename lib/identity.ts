@@ -41,31 +41,29 @@ export interface AgentIdentity {
   explorerUrl: string
 }
 
-function getClients() {
-  if (!process.env.ARC_PRIVATE_KEY) throw new Error("ARC_PRIVATE_KEY not set")
-  const account = privateKeyToAccount(process.env.ARC_PRIVATE_KEY as `0x${string}`)
+function getClients(privateKey: string) {
+  const account = privateKeyToAccount(privateKey as `0x${string}`)
   const publicClient = createPublicClient({ chain: arcTestnet, transport: http(ARC_TESTNET_RPC) })
   const walletClient = createWalletClient({ account, chain: arcTestnet, transport: http(ARC_TESTNET_RPC) })
   return { account, publicClient, walletClient }
 }
 
-export async function getAgentIdentity(): Promise<AgentIdentity | null> {
-  if (!process.env.ARC_PRIVATE_KEY) return null
+export async function getAgentIdentity(privateKey: string, address: string): Promise<AgentIdentity | null> {
   try {
-    const { account, publicClient } = getClients()
+    const { publicClient } = getClients(privateKey)
     const balance = await publicClient.readContract({
       address: IDENTITY_REGISTRY,
       abi: IDENTITY_ABI,
       functionName: "balanceOf",
-      args: [account.address],
+      args: [address as `0x${string}`],
     })
 
     if (balance === 0n) {
       return {
         registered: false,
         tokenId: null,
-        address: account.address,
-        explorerUrl: `https://testnet.arcscan.app/address/${account.address}`,
+        address,
+        explorerUrl: `https://testnet.arcscan.app/address/${address}`,
       }
     }
 
@@ -75,7 +73,7 @@ export async function getAgentIdentity(): Promise<AgentIdentity | null> {
         address: IDENTITY_REGISTRY,
         abi: IDENTITY_ABI,
         functionName: "tokenOfOwnerByIndex",
-        args: [account.address, 0n],
+        args: [address as `0x${string}`, 0n],
       })
       tokenId = id.toString()
     } catch {
@@ -85,22 +83,22 @@ export async function getAgentIdentity(): Promise<AgentIdentity | null> {
     return {
       registered: true,
       tokenId,
-      address: account.address,
-      explorerUrl: `https://testnet.arcscan.app/address/${account.address}`,
+      address,
+      explorerUrl: `https://testnet.arcscan.app/address/${address}`,
     }
   } catch {
     return null
   }
 }
 
-export async function registerAgentIdentity(): Promise<{ txHash: string; tokenId: string | null }> {
-  const { account, publicClient, walletClient } = getClients()
+export async function registerAgentIdentity(privateKey: string, address: string): Promise<{ txHash: string; tokenId: string | null }> {
+  const { publicClient, walletClient, account } = getClients(privateKey)
 
   const balance = await publicClient.readContract({
     address: IDENTITY_REGISTRY,
     abi: IDENTITY_ABI,
     functionName: "balanceOf",
-    args: [account.address],
+    args: [address as `0x${string}`],
   })
 
   if (balance > 0n) {
