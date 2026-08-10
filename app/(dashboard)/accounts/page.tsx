@@ -10,16 +10,11 @@ import {
   CheckmarkCircle01Icon,
   Alert01Icon,
 } from "@hugeicons/core-free-icons"
-import { getTransactions, getThirtyDayFlow, getThirtyDayTrend, getSpendAuthority } from "@/lib/store"
+import { getTransactions, getThirtyDayFlow, getThirtyDayTrend, getSpendAuthority, getUserWallet } from "@/lib/store"
 import { getUserIdFromCookies } from "@/lib/auth-server"
 import {
-  getAgentAddress,
   getUsdcBalance,
-  isArcConfigured,
-  isCircleConfigured,
-  isPaymentConfigured,
   getNetworkName,
-  fetchCircleWalletBalance,
 } from "@/lib/payments"
 import { getAgentIdentity } from "@/lib/identity"
 import type { Transaction } from "@/lib/types"
@@ -41,39 +36,21 @@ async function getPageData() {
   const userId = await getUserIdFromCookies()
   if (!userId) return null
 
-  const [transactions, { inbound, outbound }, { inbound: inboundTrend, outbound: outboundTrend, dates: trendDates }, spendAuthorityUsdc] = await Promise.all([
+  const [transactions, { inbound, outbound }, { inbound: inboundTrend, outbound: outboundTrend, dates: trendDates }, spendAuthorityUsdc, wallet] = await Promise.all([
     getTransactions(userId),
     getThirtyDayFlow(userId),
     getThirtyDayTrend(userId),
     getSpendAuthority(userId),
+    getUserWallet(userId),
   ])
 
-  if (!isPaymentConfigured()) {
-    return {
-      address: null,
-      balanceUsdc: 0,
-      network: "Arc Testnet (not configured)",
-      spendAuthorityUsdc,
-      inboundThirtyDay: inbound,
-      outboundThirtyDay: outbound,
-      inboundTrend,
-      outboundTrend,
-      trendDates,
-      transactions,
-      live: false,
-      identity: null,
-    }
-  }
-
-  const address = getAgentAddress()!
+  const address = wallet?.address ?? null
   let balanceUsdc = 0
-  if (isArcConfigured()) {
+  if (address) {
     balanceUsdc = await getUsdcBalance(address)
-  } else if (isCircleConfigured()) {
-    balanceUsdc = await fetchCircleWalletBalance(process.env.CIRCLE_WALLET_ID!)
   }
 
-  const identity = await getAgentIdentity()
+  const identity = address ? await getAgentIdentity() : null
 
   return {
     address,
@@ -86,7 +63,7 @@ async function getPageData() {
     outboundTrend,
     trendDates,
     transactions,
-    live: true,
+    live: !!address,
     identity,
   }
 }
@@ -174,10 +151,9 @@ export default async function AccountsPage() {
           <div className="flex items-start gap-3">
             <HugeiconsIcon icon={Alert01Icon} size={18} color="currentColor" strokeWidth={1.5} className="text-amber-600 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-sm font-semibold text-amber-900">Wallet not configured</p>
+              <p className="text-sm font-semibold text-amber-900">Wallet not ready</p>
               <p className="mt-1 text-xs text-amber-700">
-                Add <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">ARC_PRIVATE_KEY</code> to{" "}
-                <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">.env.local</code> to connect the agent wallet.
+                Your wallet is being generated. Try refreshing the page.
               </p>
             </div>
           </div>
@@ -255,7 +231,7 @@ export default async function AccountsPage() {
           address: identity.address,
           explorerUrl: identity.explorerUrl,
         } : null}
-        configured={isPaymentConfigured()}
+        configured={live}
       />
 
       {/* Transactions */}

@@ -18,6 +18,7 @@ import {
   Delete02Icon,
   AlertCircleIcon,
   DeliveryBox01Icon,
+  Copy01Icon,
 } from "@hugeicons/core-free-icons"
 import {
   Dialog,
@@ -137,6 +138,14 @@ export function SettingsForm({ walletAddress, network, spendAuthority, shippingA
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmText, setConfirmText] = useState("")
+  const [copied, setCopied] = useState(false)
+
+  function handleCopyAddress() {
+    navigator.clipboard.writeText(walletAddress).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
   function handleSave() {
     toast.success("Settings saved")
@@ -264,13 +273,24 @@ export function SettingsForm({ walletAddress, network, spendAuthority, shippingA
       >
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">Wallet Address</p>
-              <p className="mt-0.5 font-mono text-sm text-gray-700">{walletAddress}</p>
+              <p className="mt-0.5 font-mono text-sm text-gray-700 truncate">{walletAddress}</p>
             </div>
-            <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-semibold text-green-700">
-              Active
-            </span>
+            <div className="ml-3 flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleCopyAddress}
+                title="Copy address"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-100"
+              >
+                <HugeiconsIcon icon={copied ? CheckmarkCircle01Icon : Copy01Icon} size={12} color={copied ? "#16a34a" : "currentColor"} strokeWidth={1.5} />
+                {copied ? "Copied" : "Copy"}
+              </button>
+              <span className="rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-semibold text-green-700">
+                Active
+              </span>
+            </div>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
             <div>
