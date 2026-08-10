@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic"
-import { streamText, tool, zodSchema, isStepCount } from "ai"
+import { streamText, tool, zodSchema, isStepCount, convertToModelMessages } from "ai"
 import { z } from "zod"
 import {
   getInventory,
@@ -133,14 +133,17 @@ export async function POST(req: Request) {
     })
   }
 
-  const { messages } = await req.json()
-  const systemPrompt = await buildSystemPrompt(userId)
+  const { messages: rawMessages } = await req.json()
+  const [systemPrompt, modelMessages] = await Promise.all([
+    buildSystemPrompt(userId),
+    convertToModelMessages(rawMessages),
+  ])
 
   try {
     const result = streamText({
       model: provider(MODEL),
       system: systemPrompt,
-      messages,
+      messages: modelMessages,
       tools: {
         getInventoryStatus: tool({
           description: "Get current inventory levels, reorder points, and stock status for all items",
