@@ -426,21 +426,10 @@ export async function POST(req: Request) {
     })
 
     return result.toUIMessageStreamResponse({
-      consumeSseStream: async ({ stream }) => {
-        const reader = stream.getReader()
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            if (value?.includes("error") || value?.includes("Error")) {
-              console.error("[chat/route] stream chunk with error:", value)
-            }
-          }
-        } catch (e) {
-          console.error("[chat/route] stream read error:", e)
-        } finally {
-          reader.releaseLock()
-        }
+      onError: (err) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error("[chat/route] stream error:", msg)
+        return msg
       },
     })
   } catch (err) {
