@@ -49,7 +49,7 @@ import {
   deleteConversation,
   makeTitle,
 } from "./chat-store"
-import type { UIMessage } from "ai"
+import { type UIMessage, DefaultChatTransport } from "ai"
 
 const SUGGESTIONS = [
   "What inventory items are critically low?",
@@ -70,8 +70,8 @@ export default function ChatPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const { messages, status, append, setMessages, stop, error } = useChat({
-    api: "/api/chat",
+  const { messages, status, sendMessage, setMessages, stop, error } = useChat({
+    transport: new DefaultChatTransport({ api: "/api/chat" }),
     onError: (err) => {
       setErrorMsg(err.message)
       toast.error(err.message, { id: "chat-error" })
@@ -140,7 +140,7 @@ export default function ChatPage() {
 
   function handleSubmit(msg: PromptInputMessage) {
     if (!msg.text.trim()) return
-    append({ role: "user", content: msg.text })
+    sendMessage({ text: msg.text })
   }
 
   function copyConversation() {
@@ -344,11 +344,11 @@ export default function ChatPage() {
                     description="Ask me about inventory, orders, or wallet status — or instruct me to take action."
                   />
                 ) : (
-                  messages.filter((msg) => msg.role !== "data").map((msg) => {
+                  messages.map((msg) => {
                     const parts = msg.parts ?? []
-                    const toolParts = parts.filter((p: { type: string }) => p.type === "tool-invocation")
+                    const toolParts = parts.filter((p: { type: string }) => p.type === "dynamic-tool")
                     const steps = toolPartsToSteps(
-                      toolParts as Array<{ type: string; toolInvocation?: { toolName: string; state: string } }>
+                      toolParts as Array<{ type: string; toolName?: string; state?: string }>
                     )
 
                     return (
@@ -408,7 +408,7 @@ export default function ChatPage() {
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
-                onClick={() => append({ role: "user", content: s })}
+                onClick={() => sendMessage({ text: s })}
                 className="rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100"
               >
                 {s}

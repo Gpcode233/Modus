@@ -98,27 +98,26 @@ export function ChainOfThought({ steps, defaultOpen = true, className }: ChainOf
   )
 }
 
-/**
- * Convert tool invocation parts from AI SDK messages into ChainOfThought steps.
- */
 export function toolPartsToSteps(
-  parts: Array<{ type: string; toolInvocation?: { toolName: string; state: string; result?: unknown } }>
+  parts: Array<{ type: string; toolName?: string; state?: string }>
 ): Step[] {
   const TOOL_LABELS: Record<string, string> = {
     getInventoryStatus: "Reading inventory",
     getOrderStatus: "Checking orders",
     getWalletBalance: "Fetching wallet balance",
+    searchWeb: "Searching the web",
+    saveMemory: "Saving to memory",
     initiateProcurement: "Executing procurement",
   }
 
   return parts
-    .filter((p) => p.type === "tool-invocation" && p.toolInvocation)
+    .filter((p) => p.type === "dynamic-tool" && p.toolName)
     .map((p) => {
-      const inv = p.toolInvocation!
-      const label = TOOL_LABELS[inv.toolName] ?? inv.toolName
+      const label = TOOL_LABELS[p.toolName!] ?? p.toolName!
       const status: StepStatus =
-        inv.state === "result" ? "complete" :
-        inv.state === "call" ? "active" : "pending"
+        p.state === "output-available" ? "complete" :
+        p.state === "output-error" ? "error" :
+        p.state === "input-available" || p.state === "input-streaming" ? "active" : "pending"
       return { label, status }
     })
 }
