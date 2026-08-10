@@ -1,4 +1,4 @@
-import { createAnthropic } from "@ai-sdk/anthropic"
+import { createGroq } from "@ai-sdk/groq"
 import { streamText, tool, zodSchema, isStepCount, convertToModelMessages } from "ai"
 import { z } from "zod"
 import {
@@ -24,12 +24,11 @@ import { checkChatRateLimit } from "@/lib/rate-limit"
 
 export const maxDuration = 30
 
-const provider = createAnthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-  baseURL: process.env.ANTHROPIC_BASE_URL,
+const provider = createGroq({
+  apiKey: process.env.GROQ_API_KEY ?? "",
 })
 
-const MODEL = process.env.AI_MODEL ?? "claude-sonnet-4-6"
+const MODEL = process.env.AI_MODEL ?? "llama-3.3-70b-versatile"
 
 const BASE_SYSTEM_PROMPT = `You are the Modus autonomous procurement agent — an AI that manages inventory and supplier purchasing for businesses using USDC on Arc L1 (Circle's blockchain).
 
@@ -126,8 +125,8 @@ export async function POST(req: Request) {
     )
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY is not configured. Add it to your environment variables." }), {
+  if (!process.env.GROQ_API_KEY) {
+    return new Response(JSON.stringify({ error: "GROQ_API_KEY is not configured." }), {
       status: 503,
       headers: { "Content-Type": "application/json" },
     })
