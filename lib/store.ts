@@ -17,10 +17,34 @@ function uuid() {
 // ---------------------------------------------------------------------------
 
 async function ensureUser(userId: string): Promise<void> {
-  await db
-    .insert(users)
-    .values({ id: userId })
-    .onConflictDoNothing()
+  await db.insert(users).values({ id: userId }).onConflictDoNothing()
+
+  const row = await db
+    .select({ walletAddress: users.walletAddress, walletPrivateKey: users.walletPrivateKey })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+
+  if (!row[0]?.walletAddress) {
+    const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts")
+    const privateKey = generatePrivateKey()
+    const account = privateKeyToAccount(privateKey)
+    await db
+      .update(users)
+      .set({ walletAddress: account.address, walletPrivateKey: privateKey })
+      .where(eq(users.id, userId))
+  }
+}
+
+export async function getUserWallet(userId: string): Promise<{ address: string; privateKey: string } | null> {
+  await ensureUser(userId)
+  const row = await db
+    .select({ walletAddress: users.walletAddress, walletPrivateKey: users.walletPrivateKey })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+  if (!row[0]?.walletAddress || !row[0]?.walletPrivateKey) return null
+  return { address: row[0].walletAddress, privateKey: row[0].walletPrivateKey }
 }
 
 export async function getStoreName(userId: string): Promise<string | null> {

@@ -17,6 +17,7 @@ export interface AgentMemoryEntry {
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // Privy user ID or "dev:<address>"
   walletAddress: text("wallet_address"),
+  walletPrivateKey: text("wallet_private_key"),
   storeName: text("store_name"),
   spendAuthorityUsdc: numeric("spend_authority_usdc"),
   onboardingComplete: boolean("onboarding_complete").notNull().default(false),

@@ -12,13 +12,11 @@ import {
   saveAgentMemory,
   getShippingAddress,
   createInventoryItem,
+  getUserWallet,
 } from "@/lib/store"
 import {
-  sendUsdc,
-  isPaymentConfigured,
-  getAgentAddress,
   getUsdcBalance,
-  isArcConfigured,
+  sendUsdcFromPrivateKey,
 } from "@/lib/payments"
 import { getUserIdFromRequest } from "@/lib/auth-server"
 import { checkChatRateLimit } from "@/lib/rate-limit"
@@ -55,9 +53,10 @@ async function buildSystemPrompt(userId: string): Promise<string> {
     getShippingAddress(userId),
   ])
 
-  const walletAddress = getAgentAddress()
+  const userWallet = await getUserWallet(userId)
+  const walletAddress = userWallet?.address ?? null
   let walletBalance = 0
-  if (walletAddress && isArcConfigured()) {
+  if (walletAddress) {
     try { walletBalance = await getUsdcBalance(walletAddress) } catch { /* offline */ }
   }
 
@@ -215,16 +214,13 @@ export async function POST(req: Request) {
           description: "Get the current live USDC treasury balance and spend authority",
           inputSchema: zodSchema(z.object({})),
           execute: async () => {
-            const address = getAgentAddress()
-            if (!address) {
-              return { configured: false, message: "ARC_PRIVATE_KEY not set" }
+            const wallet = await getUserWallet(userId)
+            if (!wallet) {
+              return { configured: false, message: "Wallet not yet generated" }
             }
-            let balanceUsdc = 0
-            if (isArcConfigured()) {
-              balanceUsdc = await getUsdcBalance(address)
-            }
+            const balanceUsdc = await getUsdcBalance(wallet.address)
             return {
-              address,
+              address: wallet.address,
               balanceUsdc,
               spendAuthorityUsdc: await getSpendAuthority(userId),
               network: "Arc Testnet",
@@ -352,13 +348,11 @@ export async function POST(req: Request) {
               return { error: `Order total (${totalUsdc} USDC) exceeds spend authority (${spendAuth} USDC). Store owner must increase the limit.` }
             }
 
-            if (isArcConfigured()) {
-              const address = getAgentAddress()
-              if (address) {
-                const liveBalance = await getUsdcBalance(address)
-                if (totalUsdc > liveBalance) {
-                  return { error: `Insufficient balance: need ${totalUsdc} USDC, wallet has ${liveBalance} USDC` }
-                }
+            const wallet = await getUserWallet(userId)
+            if (wallet) {
+              const liveBalance = await getUsdcBalance(wallet.address)
+              if (totalUsdc > liveBalance) {
+                return { error: `Insufficient balance: need ${totalUsdc} USDC, wallet has ${liveBalance} USDC. Fund your wallet at ${wallet.address}` }
               }
             }
 
@@ -373,9 +367,9 @@ export async function POST(req: Request) {
               status: "pending",
             })
 
-            if (isPaymentConfigured() && supplierAddress) {
+            if (wallet?.privateKey && supplierAddress) {
               try {
-                const result = await sendUsdc(supplierAddress, totalUsdc.toFixed(2))
+                const result = await sendUsdcFromPrivateKey(wallet.privateKey, supplierAddress, totalUsdc.toFixed(2))
                 await recordTransaction(userId, {
                   type: "outbound",
                   amountUsdc: totalUsdc,

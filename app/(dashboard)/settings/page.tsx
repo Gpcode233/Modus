@@ -1,5 +1,5 @@
-import { getAgentAddress, getNetworkName, isPaymentConfigured } from "@/lib/payments"
-import { getSpendAuthority, getShippingAddress } from "@/lib/store"
+import { getNetworkName } from "@/lib/payments"
+import { getSpendAuthority, getShippingAddress, getUserWallet } from "@/lib/store"
 import { getUserIdFromCookies } from "@/lib/auth-server"
 import { redirect } from "next/navigation"
 import { SettingsForm } from "./settings-form"
@@ -8,12 +8,13 @@ export default async function SettingsPage() {
   const userId = await getUserIdFromCookies()
   if (!userId) redirect("/login")
 
-  const address = isPaymentConfigured() ? (getAgentAddress() ?? "") : ""
   const network = getNetworkName()
-  const [spendAuthority, shippingAddress] = await Promise.all([
+  const [spendAuthority, shippingAddress, wallet] = await Promise.all([
     getSpendAuthority(userId),
     getShippingAddress(userId),
+    getUserWallet(userId),
   ])
+  const address = wallet?.address ?? ""
 
   return (
     <div className="h-full overflow-y-auto flex flex-col gap-6 p-8">

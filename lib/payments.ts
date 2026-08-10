@@ -88,6 +88,30 @@ export async function sendUsdc(to: string, amount: string): Promise<SendResult> 
   )
 }
 
+export async function sendUsdcFromPrivateKey(privateKey: string, to: string, amount: string): Promise<SendResult> {
+  const { AppKit } = await import("@circle-fin/app-kit")
+  const { createViemAdapterFromPrivateKey } = await import("@circle-fin/adapter-viem-v2")
+
+  const adapter = createViemAdapterFromPrivateKey({
+    privateKey: privateKey as `0x${string}`,
+  })
+
+  const kit = new AppKit()
+  const result = await kit.send({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    from: { adapter: adapter as any, chain: "Arc_Testnet" },
+    to,
+    amount,
+    token: "USDC",
+  })
+
+  if (!result.txHash) throw new Error("Arc payment returned no txHash")
+  return {
+    txHash: result.txHash,
+    explorerUrl: result.explorerUrl ?? `https://testnet.arcscan.app/tx/${result.txHash}`,
+  }
+}
+
 async function sendUsdcViaArc(to: string, amount: string): Promise<SendResult> {
   const { AppKit } = await import("@circle-fin/app-kit")
   const { createViemAdapterFromPrivateKey } = await import("@circle-fin/adapter-viem-v2")
