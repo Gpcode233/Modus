@@ -272,7 +272,7 @@ export default function ChatPage() {
           </div>
           <div>
             <h1 className="text-sm font-semibold text-gray-900">Modus Agent</h1>
-            <p className="text-xs text-gray-500">Autonomous procurement AI · Arc L1 · Claude</p>
+            <p className="text-xs text-gray-500">Autonomous procurement AI · Arc L1 · Groq</p>
           </div>
 
           <div className="ml-auto flex items-center gap-2">

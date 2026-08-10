@@ -11,6 +11,7 @@ import {
   getAgentMemories,
   saveAgentMemory,
   getShippingAddress,
+  createInventoryItem,
 } from "@/lib/store"
 import {
   sendUsdc,
@@ -307,13 +308,15 @@ export async function POST(req: Request) {
 
         initiateProcurement: tool({
           description:
-            "Initiate an autonomous purchase order for an inventory item. Use this when the user confirms they want to proceed with a purchase.",
+            "Initiate an autonomous purchase order. Provide either inventoryItemId (if the item exists in inventory) OR sku + itemName (for new items — the agent will auto-create it). Use this when the user confirms a purchase.",
           inputSchema: zodSchema(
             z.object({
-              inventoryItemId: z.string().describe("The ID of the inventory item to reorder"),
+              inventoryItemId: z.string().optional().describe("ID of existing inventory item. Leave blank for new items."),
+              sku: z.string().optional().describe("SKU of the item. Required if inventoryItemId is not provided."),
+              itemName: z.string().optional().describe("Name/description of the item. Required if inventoryItemId is not provided."),
               supplier: z.string().describe("Chosen supplier name"),
               qty: z.number().int().positive().describe("Quantity to order"),
-              unitCostUsdc: z.number().positive().describe("Agreed price per unit in USDC"),
+              unitCostUsdc: z.number().positive().describe("Total cost in USDC for the whole order (not per unit)"),
               supplierAddress: z
                 .string()
                 .regex(/^0x[a-fA-F0-9]{40}$/)
@@ -321,12 +324,25 @@ export async function POST(req: Request) {
                 .describe("Supplier EVM wallet address for USDC payment (0x...). Omit if unknown."),
             })
           ),
-          execute: async ({ inventoryItemId, supplier, qty, unitCostUsdc, supplierAddress }) => {
+          execute: async ({ inventoryItemId, sku, itemName, supplier, qty, unitCostUsdc, supplierAddress }) => {
+            try {
             const items = await getInventory(userId)
-            const item = items.find((i) => i.id === inventoryItemId)
-            if (!item) return { error: `Inventory item ${inventoryItemId} not found` }
+            let item = items.find((i) => i.id === inventoryItemId) ?? items.find((i) => i.sku === sku)
 
-            const totalUsdc = qty * unitCostUsdc
+            if (!item) {
+              if (!sku) return { error: "Provide either inventoryItemId or sku + itemName to identify the item." }
+              item = await createInventoryItem(userId, {
+                sku: sku,
+                name: itemName ?? sku,
+                category: "",
+                location: "",
+                qtyOnHand: 0,
+                reorderPoint: qty,
+                unitCostUsdc: unitCostUsdc,
+              })
+            }
+
+            const totalUsdc = unitCostUsdc
             const spendAuth = await getSpendAuthority(userId)
 
             if (spendAuth == null) {
@@ -419,16 +435,29 @@ export async function POST(req: Request) {
               message: `${totalUsdc} USDC settled (simulated — configure ARC_PRIVATE_KEY for live payments)`,
               live: false,
             }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : JSON.stringify(err)
+              console.error("[initiateProcurement] error:", err)
+              return { error: `Procurement failed: ${msg}` }
+            }
           },
         }),
       },
-      stopWhen: isStepCount(5),
+      stopWhen: isStepCount(10),
     })
 
     return result.toUIMessageStreamResponse({
       onError: (err) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.error("[chat/route] stream error:", msg)
+        let msg: string
+        if (err instanceof Error) {
+          msg = err.message
+        } else if (err && typeof err === "object") {
+          const o = err as Record<string, unknown>
+          msg = String(o.message ?? o.error ?? o.errorText ?? JSON.stringify(err))
+        } else {
+          msg = String(err)
+        }
+        console.error("[chat/route] stream error:", err)
         return msg
       },
     })
