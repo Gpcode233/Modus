@@ -73,8 +73,14 @@ export default function ChatPage() {
   const { messages, status, sendMessage, setMessages, stop, error } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
     onError: (err) => {
-      setErrorMsg(err.message)
-      toast.error(err.message, { id: "chat-error" })
+      let msg = err.message
+      try {
+        const parsed = JSON.parse(msg)
+        if (parsed?.error) msg = parsed.error
+      } catch { /* not JSON */ }
+      console.error("[chat] agent error:", err)
+      setErrorMsg(msg)
+      toast.error(msg, { id: "chat-error", duration: 8000 })
     },
   })
 
@@ -328,7 +334,16 @@ export default function ChatPage() {
         {(errorMsg || error) && (
           <div className="shrink-0 flex items-start gap-2 border-b border-red-100 bg-red-50 px-5 py-3">
             <HugeiconsIcon icon={Alert01Icon} size={15} color="#ef4444" strokeWidth={1.5} className="mt-0.5 shrink-0" />
-            <p className="text-xs text-red-700">{errorMsg ?? error?.message}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-red-700 mb-0.5">Agent error</p>
+              <p className="text-xs text-red-600 break-all font-mono">{errorMsg ?? error?.message}</p>
+            </div>
+            <button
+              onClick={() => navigator.clipboard.writeText(errorMsg ?? error?.message ?? "")}
+              className="shrink-0 text-xs text-red-400 hover:text-red-600 underline"
+            >
+              copy
+            </button>
           </div>
         )}
 

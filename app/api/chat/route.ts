@@ -132,11 +132,25 @@ export async function POST(req: Request) {
     })
   }
 
-  const { messages: rawMessages } = await req.json()
-  const [systemPrompt, modelMessages] = await Promise.all([
-    buildSystemPrompt(userId),
-    convertToModelMessages(rawMessages),
-  ])
+  let rawMessages: unknown[]
+  let systemPrompt: string
+  let modelMessages: Awaited<ReturnType<typeof convertToModelMessages>>
+
+  try {
+    const body = await req.json()
+    rawMessages = body.messages ?? []
+    ;[systemPrompt, modelMessages] = await Promise.all([
+      buildSystemPrompt(userId),
+      convertToModelMessages(rawMessages as Parameters<typeof convertToModelMessages>[0]),
+    ])
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error("[chat/route] setup error:", message)
+    return new Response(JSON.stringify({ error: `Setup failed: ${message}` }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
 
   try {
     const result = streamText({
@@ -411,10 +425,28 @@ export async function POST(req: Request) {
       stopWhen: isStepCount(5),
     })
 
-    return result.toUIMessageStreamResponse()
+    return result.toUIMessageStreamResponse({
+      consumeSseStream: async ({ stream }) => {
+        const reader = stream.getReader()
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value?.includes("error") || value?.includes("Error")) {
+              console.error("[chat/route] stream chunk with error:", value)
+            }
+          }
+        } catch (e) {
+          console.error("[chat/route] stream read error:", e)
+        } finally {
+          reader.releaseLock()
+        }
+      },
+    })
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error"
-    return new Response(JSON.stringify({ error: message }), {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error("[chat/route] streamText error:", message)
+    return new Response(JSON.stringify({ error: `LLM error: ${message}` }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     })
