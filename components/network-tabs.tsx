@@ -15,7 +15,7 @@ export function NetworkTabs() {
         <TabsList className="h-8 bg-gray-100 p-0.5">
           <TabsTrigger
             value="testnet"
-            className="h-7 px-3 text-xs font-medium data-[selected]:bg-white data-[selected]:text-green-700 data-[selected]:shadow-sm"
+            className="h-7 px-3 text-xs font-medium data-[selected]:bg-white data-[selected]:text-green-700 data-[selected]:shadow-sm data-[selected]:ring-2 data-[selected]:ring-green-500/60 data-[selected]:ring-offset-1"
           >
             Arc Testnet
           </TabsTrigger>

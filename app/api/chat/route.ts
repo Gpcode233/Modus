@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic"
-import { streamText, tool, zodSchema, isStepCount } from "ai"
+import { streamText, tool, isStepCount } from "ai"
 import { z } from "zod"
 import {
   getInventory,
@@ -63,13 +63,20 @@ export async function POST(req: Request) {
     )
   }
 
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY is not configured. Add it to your environment variables." }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
   const { messages } = await req.json()
   const spendAuthority = await getSpendAuthority(userId)
 
   try {
     const result = streamText({
       model: provider(MODEL),
-      instructions:
+      system:
         SYSTEM_PROMPT +
         (spendAuthority != null
           ? `\n\nAutonomous spend authority: ${spendAuthority} USDC per transaction.`
@@ -78,7 +85,7 @@ export async function POST(req: Request) {
       tools: {
         getInventoryStatus: tool({
           description: "Get current inventory levels, reorder points, and stock status for all items",
-          inputSchema: zodSchema(z.object({})),
+          parameters: z.object({}),
           execute: async () => {
             const items = await getInventory(userId)
             return items.map((item) => ({
@@ -103,11 +110,9 @@ export async function POST(req: Request) {
 
         getOrderStatus: tool({
           description: "Get the status and timeline of all purchase orders",
-          inputSchema: zodSchema(
-            z.object({
-              poNumber: z.string().optional().describe("Filter by PO number (optional)"),
-            })
-          ),
+          parameters: z.object({
+            poNumber: z.string().optional().describe("Filter by PO number (optional)"),
+          }),
           execute: async ({ poNumber }) => {
             const orders = await getOrders(userId)
             const filtered = poNumber
@@ -130,7 +135,7 @@ export async function POST(req: Request) {
 
         getWalletBalance: tool({
           description: "Get the current live USDC treasury balance and spend authority",
-          inputSchema: zodSchema(z.object({})),
+          parameters: z.object({}),
           execute: async () => {
             const address = getAgentAddress()
             if (!address) {
@@ -153,19 +158,17 @@ export async function POST(req: Request) {
         initiateProcurement: tool({
           description:
             "Initiate an autonomous purchase order for an inventory item. Use this when the user confirms they want to proceed with a purchase.",
-          inputSchema: zodSchema(
-            z.object({
-              inventoryItemId: z.string().describe("The ID of the inventory item to reorder"),
-              supplier: z.string().describe("Chosen supplier name"),
-              qty: z.number().int().positive().describe("Quantity to order"),
-              unitCostUsdc: z.number().positive().describe("Agreed price per unit in USDC"),
-              supplierAddress: z
-                .string()
-                .regex(/^0x[a-fA-F0-9]{40}$/)
-                .optional()
-                .describe("Supplier EVM wallet address for USDC payment (0x...). Omit if unknown."),
-            })
-          ),
+          parameters: z.object({
+            inventoryItemId: z.string().describe("The ID of the inventory item to reorder"),
+            supplier: z.string().describe("Chosen supplier name"),
+            qty: z.number().int().positive().describe("Quantity to order"),
+            unitCostUsdc: z.number().positive().describe("Agreed price per unit in USDC"),
+            supplierAddress: z
+              .string()
+              .regex(/^0x[a-fA-F0-9]{40}$/)
+              .optional()
+              .describe("Supplier EVM wallet address for USDC payment (0x...). Omit if unknown."),
+          }),
           execute: async ({ inventoryItemId, supplier, qty, unitCostUsdc, supplierAddress }) => {
             const items = await getInventory(userId)
             const item = items.find((i) => i.id === inventoryItemId)

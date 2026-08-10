@@ -3,9 +3,10 @@
  * SQL injection protection is provided by Drizzle ORM's parameterized queries.
  */
 
-import { db, users, inventory, orders, transactions, chatConversations } from "@/lib/db"
-import { eq, desc, and, gte, sql } from "drizzle-orm"
+import { db, users, inventory, orders, transactions, chatConversations, chatRateLimits } from "@/lib/db"
+import { eq, desc, and, gte } from "drizzle-orm"
 import type { InventoryItem, PurchaseOrder, Transaction, OrderTimelineEvent } from "./types"
+import type { AgentMemoryEntry } from "@/lib/db/schema"
 
 function uuid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
@@ -70,6 +71,11 @@ export async function getSpendAuthority(userId: string): Promise<number | null> 
   const row = await db.select({ val: users.spendAuthorityUsdc }).from(users).where(eq(users.id, userId)).limit(1)
   const v = row[0]?.val
   return v != null ? parseFloat(v) : null
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  await db.delete(chatRateLimits).where(eq(chatRateLimits.userId, userId))
+  await db.delete(users).where(eq(users.id, userId))
 }
 
 export async function setSpendAuthority(userId: string, amount: number): Promise<void> {

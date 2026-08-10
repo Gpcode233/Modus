@@ -9,12 +9,19 @@ import {
   unique,
 } from "drizzle-orm/pg-core"
 
+export interface AgentMemoryEntry {
+  content: string
+  savedAt: string
+}
+
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // Privy user ID or "dev:<address>"
   walletAddress: text("wallet_address"),
   storeName: text("store_name"),
   spendAuthorityUsdc: numeric("spend_authority_usdc"),
   onboardingComplete: boolean("onboarding_complete").notNull().default(false),
+  shippingAddress: text("shipping_address"),
+  agentMemory: jsonb("agent_memory").default([]).$type<AgentMemoryEntry[]>(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 })

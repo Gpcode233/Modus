@@ -1,7 +1,8 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
-import { useEffect, useRef, useState, Fragment, useCallback } from "react"
+import { useEffect, useRef, useState, Fragment } from "react"
+import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   BubbleChatSparkIcon,
@@ -24,12 +25,15 @@ import {
   MessageActions,
   MessageAction,
 } from "@/components/ai-elements/message"
+import { ConversationEmptyState } from "@/components/ai-elements/conversation"
 import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-  ConversationEmptyState,
-} from "@/components/ai-elements/conversation"
+  MessageScrollerProvider,
+  MessageScroller,
+  MessageScrollerViewport,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerButton,
+} from "@/components/ui/message-scroller"
 import {
   PromptInput,
   PromptInputTextarea,
@@ -68,7 +72,10 @@ export default function ChatPage() {
 
   const { messages, status, append, setMessages, stop, error } = useChat({
     api: "/api/chat",
-    onError: (err) => setErrorMsg(err.message),
+    onError: (err) => {
+      setErrorMsg(err.message)
+      toast.error(err.message, { id: "chat-error" })
+    },
   })
 
   const isLoading = status === "submitted" || status === "streaming"
@@ -326,64 +333,74 @@ export default function ChatPage() {
         )}
 
         {/* Conversation */}
-        <Conversation className="flex-1">
-          <ConversationContent>
-            {messages.length === 0 && !isLoading ? (
-              <ConversationEmptyState
-                icon={<HugeiconsIcon icon={BubbleChatSparkIcon} size={28} color="currentColor" strokeWidth={1.5} />}
-                title="Modus Agent is ready"
-                description="Ask me about inventory, orders, or wallet status — or instruct me to take action."
-              />
-            ) : (
-              messages.filter((msg) => msg.role !== "data").map((msg) => {
-                const parts = msg.parts ?? []
-                const toolParts = parts.filter((p: { type: string }) => p.type === "tool-invocation")
-                const steps = toolPartsToSteps(
-                  toolParts as Array<{ type: string; toolInvocation?: { toolName: string; state: string } }>
-                )
+        <MessageScrollerProvider>
+          <MessageScroller className="flex-1">
+            <MessageScrollerViewport className="p-4">
+              <MessageScrollerContent>
+                {messages.length === 0 && !isLoading ? (
+                  <ConversationEmptyState
+                    icon={<HugeiconsIcon icon={BubbleChatSparkIcon} size={28} color="currentColor" strokeWidth={1.5} />}
+                    title="Modus Agent is ready"
+                    description="Ask me about inventory, orders, or wallet status — or instruct me to take action."
+                  />
+                ) : (
+                  messages.filter((msg) => msg.role !== "data").map((msg) => {
+                    const parts = msg.parts ?? []
+                    const toolParts = parts.filter((p: { type: string }) => p.type === "tool-invocation")
+                    const steps = toolPartsToSteps(
+                      toolParts as Array<{ type: string; toolInvocation?: { toolName: string; state: string } }>
+                    )
 
-                return (
-                  <Fragment key={msg.id}>
-                    {steps.length > 0 && msg.role === "assistant" && (
-                      <ChainOfThought
-                        steps={steps}
-                        defaultOpen={steps.some((s) => s.status !== "complete")}
-                      />
-                    )}
-                    {parts.map((part: { type: string; text?: string }, i: number) => {
-                      if (part.type === "text" && part.text?.trim()) {
-                        return (
-                          <Message key={`${msg.id}-${i}`} from={msg.role as "user" | "assistant" | "system"}>
-                            <MessageContent>
-                              <MessageResponse>{part.text}</MessageResponse>
-                            </MessageContent>
-                          </Message>
-                        )
-                      }
-                      return null
-                    })}
-                  </Fragment>
-                )
-              })
-            )}
+                    return (
+                      <MessageScrollerItem
+                        key={msg.id}
+                        messageId={msg.id}
+                        scrollAnchor={msg.role === "user"}
+                      >
+                        <Fragment>
+                          {steps.length > 0 && msg.role === "assistant" && (
+                            <ChainOfThought
+                              steps={steps}
+                              defaultOpen={steps.some((s) => s.status !== "complete")}
+                            />
+                          )}
+                          {parts.map((part: { type: string; text?: string }, i: number) => {
+                            if (part.type === "text" && part.text?.trim()) {
+                              return (
+                                <Message key={`${msg.id}-${i}`} from={msg.role as "user" | "assistant" | "system"}>
+                                  <MessageContent>
+                                    <MessageResponse>{part.text}</MessageResponse>
+                                  </MessageContent>
+                                </Message>
+                              )
+                            }
+                            return null
+                          })}
+                        </Fragment>
+                      </MessageScrollerItem>
+                    )
+                  })
+                )}
 
-            {isLoading && (
-              <div className="flex items-center gap-2 py-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600">
-                  <HugeiconsIcon icon={Robot02Icon} size={14} color="white" strokeWidth={1.5} />
-                </div>
-                <div className="rounded-2xl bg-gray-50 px-4 py-3">
-                  <div className="flex gap-1">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                {isLoading && (
+                  <div className="flex items-center gap-2 py-2">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600">
+                      <HugeiconsIcon icon={Robot02Icon} size={14} color="white" strokeWidth={1.5} />
+                    </div>
+                    <div className="rounded-2xl bg-gray-50 px-4 py-3">
+                      <div className="flex gap-1">
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
+                )}
+              </MessageScrollerContent>
+            </MessageScrollerViewport>
+            <MessageScrollerButton />
+          </MessageScroller>
+        </MessageScrollerProvider>
 
         {/* Suggestions */}
         {messages.length === 0 && !isLoading && (

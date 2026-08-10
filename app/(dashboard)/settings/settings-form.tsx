@@ -1,6 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { usePrivy } from "@privy-io/react-auth"
+import { toast } from "sonner"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import {
   Robot01Icon,
@@ -12,7 +15,17 @@ import {
   Dollar01Icon,
   ToggleOnIcon,
   ToggleOffIcon,
+  Delete02Icon,
+  AlertCircleIcon,
 } from "@hugeicons/core-free-icons"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 interface SettingsFormProps {
@@ -26,20 +39,28 @@ function SectionCard({
   title,
   description,
   children,
+  danger,
 }: {
   icon: IconSvgElement
   title: string
   description: string
   children: React.ReactNode
+  danger?: boolean
 }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+    <div className={cn(
+      "rounded-2xl border p-6 shadow-sm",
+      danger ? "border-red-100 bg-red-50/30" : "border-gray-100 bg-white"
+    )}>
       <div className="mb-5 flex items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-green-50">
-          <HugeiconsIcon icon={icon} size={18} color="#16a34a" strokeWidth={1.5} />
+        <div className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+          danger ? "bg-red-100" : "bg-green-50"
+        )}>
+          <HugeiconsIcon icon={icon} size={18} color={danger ? "#dc2626" : "#16a34a"} strokeWidth={1.5} />
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+          <h2 className={cn("text-sm font-semibold", danger ? "text-red-900" : "text-gray-900")}>{title}</h2>
           <p className="mt-0.5 text-xs text-gray-500">{description}</p>
         </div>
       </div>
@@ -103,15 +124,37 @@ function Toggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void 
 }
 
 export function SettingsForm({ walletAddress, network, spendAuthority }: SettingsFormProps) {
+  const router = useRouter()
+  const { logout } = usePrivy()
   const [authority, setAuthority] = useState(spendAuthority != null ? String(spendAuthority) : "")
   const [threshold, setThreshold] = useState("40")
   const [lowStockAlerts, setLowStockAlerts] = useState(true)
   const [criticalOnly, setCriticalOnly] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmText, setConfirmText] = useState("")
 
   function handleSave() {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+    toast.success("Settings saved")
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true)
+    try {
+      const res = await fetch("/api/user/delete", { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? "Failed to delete account")
+      }
+      toast.success("Account deleted")
+      await logout()
+      router.push("/login")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete account")
+    } finally {
+      setDeleting(false)
+      setDeleteOpen(false)
+    }
   }
 
   return (
@@ -164,7 +207,7 @@ export function SettingsForm({ walletAddress, network, spendAuthority }: Setting
         </div>
       </SectionCard>
 
-      {/* Wallet & Treasury */}
+      {/* API Keys */}
       <SectionCard
         icon={Key01Icon}
         title="API Keys"
@@ -249,22 +292,77 @@ export function SettingsForm({ walletAddress, network, spendAuthority }: Setting
         <button
           type="button"
           onClick={handleSave}
-          className={cn(
-            "flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all",
-            saved
-              ? "bg-green-100 text-green-700"
-              : "bg-green-600 text-white hover:bg-green-700 active:scale-95"
-          )}
+          className="flex items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-green-700 active:scale-95"
         >
-          <HugeiconsIcon
-            icon={CheckmarkCircle01Icon}
-            size={16}
-            color="currentColor"
-            strokeWidth={2}
-          />
-          {saved ? "Saved!" : "Save settings"}
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} size={16} color="currentColor" strokeWidth={2} />
+          Save settings
         </button>
       </div>
+
+      {/* Danger Zone */}
+      <SectionCard
+        icon={AlertCircleIcon}
+        title="Danger Zone"
+        description="Permanently delete your account and all associated data"
+        danger
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-800">Delete account</p>
+            <p className="text-xs text-gray-500">Removes your store, inventory, orders, and wallet data. Irreversible.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setConfirmText(""); setDeleteOpen(true) }}
+            className="flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+          >
+            <HugeiconsIcon icon={Delete02Icon} size={15} color="currentColor" strokeWidth={1.5} />
+            Delete account
+          </button>
+        </div>
+      </SectionCard>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteOpen} onOpenChange={(open) => setDeleteOpen(open)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-700">Delete your account?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete your store, inventory, all orders, transactions, and chat history.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 flex flex-col gap-2">
+            <label className="text-xs font-medium text-gray-700">
+              Type <span className="font-mono font-bold text-gray-900">DELETE</span> to confirm
+            </label>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm outline-none focus:border-red-400"
+            />
+          </div>
+          <DialogFooter className="mt-4">
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(false)}
+              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={confirmText !== "DELETE" || deleting}
+              onClick={handleDeleteAccount}
+              className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-40"
+            >
+              {deleting ? "Deleting…" : "Yes, delete everything"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

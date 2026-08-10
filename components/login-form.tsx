@@ -25,6 +25,7 @@ export function LoginForm({ className, mode = "signin", ...props }: React.Compon
 
   const { initOAuth } = useLoginWithOAuth({
     onComplete: () => router.push("/accounts"),
+    onError: () => setError("Google login is not enabled. Enable it in your Privy dashboard → Login methods, or sign in with email below."),
   })
 
   const sending = emailState.status === "sending-code"

@@ -20,6 +20,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@privy-io/react-auth": "^3.37.0",
     "@privy-io/server-auth": "^1.32.5",
+    "@shadcn/react": "^0.3.0",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",
