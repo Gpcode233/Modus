@@ -29,12 +29,9 @@ export function NetworkTabs() {
               <TabsTrigger
                 value="mainnet"
                 disabled
-                className="pointer-events-none h-7 px-3 text-xs font-medium opacity-40 gap-1.5"
+                className="pointer-events-none h-7 px-3 text-xs font-medium opacity-40"
               >
                 Arc Mainnet
-                <span className="rounded-full bg-gray-400/30 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 leading-none">
-                  Soon
-                </span>
               </TabsTrigger>
             </TooltipTrigger>
             <TooltipContent side="bottom">Arc Mainnet coming soon</TooltipContent>
