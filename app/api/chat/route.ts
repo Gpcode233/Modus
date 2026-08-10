@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic"
-import { streamText, tool, isStepCount } from "ai"
+import { streamText, tool, zodSchema, isStepCount } from "ai"
 import { z } from "zod"
 import {
   getInventory,
@@ -8,6 +8,9 @@ import {
   createOrder,
   advanceOrderStatus,
   recordTransaction,
+  getAgentMemories,
+  saveAgentMemory,
+  getShippingAddress,
 } from "@/lib/store"
 import {
   sendUsdc,
@@ -28,7 +31,7 @@ const provider = createAnthropic({
 
 const MODEL = process.env.AI_MODEL ?? "claude-sonnet-4-6"
 
-const SYSTEM_PROMPT = `You are the Modus autonomous procurement agent — an AI that manages inventory and supplier purchasing for businesses using USDC on Arc L1 (Circle's blockchain).
+const BASE_SYSTEM_PROMPT = `You are the Modus autonomous procurement agent — an AI that manages inventory and supplier purchasing for businesses using USDC on Arc L1 (Circle's blockchain).
 
 Your responsibilities:
 - Monitor inventory levels and flag items below reorder threshold
@@ -36,8 +39,68 @@ Your responsibilities:
 - Place purchase orders and settle payments in USDC via Circle App Kit
 - Track all orders and provide status updates
 - Give concise, data-driven answers about the treasury, inventory, and orders
+- Search the web for current supplier prices, market rates, and product availability
+- Remember important information about suppliers, preferences, and decisions for future conversations
 
-You have access to real-time data tools. Always check the live data before answering questions about inventory or orders. Be precise — include SKUs, quantities, costs, and USDC amounts in your answers. Keep responses concise but complete.`
+You have access to real-time data tools. Always check the live data before answering questions about inventory or orders. Be precise — include SKUs, quantities, costs, and USDC amounts in your answers. Keep responses concise but complete.
+
+When you learn something important (supplier preference, pricing insight, business rule, store preference), save it to memory using the saveMemory tool.`
+
+async function buildSystemPrompt(userId: string): Promise<string> {
+  const [inventory, recentOrders, spendAuthority, memories, shippingAddress] = await Promise.all([
+    getInventory(userId),
+    getOrders(userId),
+    getSpendAuthority(userId),
+    getAgentMemories(userId),
+    getShippingAddress(userId),
+  ])
+
+  const walletAddress = getAgentAddress()
+  let walletBalance = 0
+  if (walletAddress && isArcConfigured()) {
+    try { walletBalance = await getUsdcBalance(walletAddress) } catch { /* offline */ }
+  }
+
+  const criticalItems = inventory.filter(i => i.qtyOnHand < i.reorderPoint)
+  const pendingOrders = recentOrders.filter(o => o.status === "pending" || o.status === "processing")
+
+  const inventorySummary = inventory.length === 0
+    ? "No inventory items configured yet."
+    : inventory.map(i => {
+        const ratio = i.qtyOnHand / (i.reorderPoint || 1)
+        const status = i.qtyOnHand === 0 ? "OUT OF STOCK" : ratio < 0.4 ? "CRITICAL" : ratio < 1 ? "LOW" : "OK"
+        return `  • ${i.name} (${i.sku}): ${i.qtyOnHand} units [${status}] — reorder: ${i.reorderPoint}, cost: $${i.unitCostUsdc} USDC`
+      }).join("\n")
+
+  const memorySummary = memories.length === 0
+    ? "No memories saved yet."
+    : memories.map(m => `  • ${m.content}`).join("\n")
+
+  return `${BASE_SYSTEM_PROMPT}
+
+---
+
+## Live Store Snapshot (auto-updated each conversation)
+
+**Treasury**
+- Wallet: ${walletAddress ?? "not configured"}
+- USDC Balance: ${walletBalance} USDC
+- Spend Authority: ${spendAuthority != null ? `${spendAuthority} USDC per transaction` : "NOT SET — owner must configure"}
+
+**Inventory (${inventory.length} SKUs, ${criticalItems.length} need attention)**
+${inventorySummary}
+
+**Open Orders**: ${pendingOrders.length} pending/processing
+
+**Shipping Address**: ${shippingAddress ?? "not set — owner should add in Settings"}
+
+---
+
+## Your Memory (persisted across conversations)
+${memorySummary}
+
+---`
+}
 
 export async function POST(req: Request) {
   const userId = await getUserIdFromRequest(req)
@@ -71,21 +134,17 @@ export async function POST(req: Request) {
   }
 
   const { messages } = await req.json()
-  const spendAuthority = await getSpendAuthority(userId)
+  const systemPrompt = await buildSystemPrompt(userId)
 
   try {
     const result = streamText({
       model: provider(MODEL),
-      system:
-        SYSTEM_PROMPT +
-        (spendAuthority != null
-          ? `\n\nAutonomous spend authority: ${spendAuthority} USDC per transaction.`
-          : "\n\nNote: Autonomous spend authority has not been set by the store owner yet."),
+      system: systemPrompt,
       messages,
       tools: {
         getInventoryStatus: tool({
           description: "Get current inventory levels, reorder points, and stock status for all items",
-          parameters: z.object({}),
+          inputSchema: zodSchema(z.object({})),
           execute: async () => {
             const items = await getInventory(userId)
             return items.map((item) => ({
@@ -110,9 +169,11 @@ export async function POST(req: Request) {
 
         getOrderStatus: tool({
           description: "Get the status and timeline of all purchase orders",
-          parameters: z.object({
-            poNumber: z.string().optional().describe("Filter by PO number (optional)"),
-          }),
+          inputSchema: zodSchema(
+            z.object({
+              poNumber: z.string().optional().describe("Filter by PO number (optional)"),
+            })
+          ),
           execute: async ({ poNumber }) => {
             const orders = await getOrders(userId)
             const filtered = poNumber
@@ -135,7 +196,7 @@ export async function POST(req: Request) {
 
         getWalletBalance: tool({
           description: "Get the current live USDC treasury balance and spend authority",
-          parameters: z.object({}),
+          inputSchema: zodSchema(z.object({})),
           execute: async () => {
             const address = getAgentAddress()
             if (!address) {
@@ -155,20 +216,95 @@ export async function POST(req: Request) {
           },
         }),
 
+        searchWeb: tool({
+          description: "Search the web for current supplier prices, product availability, market rates, or any relevant information to support procurement decisions",
+          inputSchema: zodSchema(
+            z.object({
+              query: z.string().describe("The search query — be specific, include product names, part numbers, or market terms"),
+            })
+          ),
+          execute: async ({ query }) => {
+            const tavilyKey = process.env.TAVILY_API_KEY
+            if (tavilyKey) {
+              try {
+                const res = await fetch("https://api.tavily.com/search", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    api_key: tavilyKey,
+                    query,
+                    search_depth: "basic",
+                    max_results: 5,
+                    include_answer: true,
+                  }),
+                })
+                if (res.ok) {
+                  const data = await res.json()
+                  return {
+                    answer: data.answer ?? null,
+                    results: (data.results ?? []).map((r: { title: string; url: string; content: string }) => ({
+                      title: r.title,
+                      url: r.url,
+                      snippet: r.content?.slice(0, 400),
+                    })),
+                  }
+                }
+              } catch { /* fall through to DuckDuckGo */ }
+            }
+
+            // Fallback: DuckDuckGo instant answers (no API key required)
+            try {
+              const res = await fetch(
+                `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
+                { headers: { Accept: "application/json" } }
+              )
+              if (res.ok) {
+                const data = await res.json()
+                return {
+                  answer: data.AbstractText || null,
+                  source: data.AbstractURL || null,
+                  relatedTopics: (data.RelatedTopics ?? []).slice(0, 5).map((t: { Text?: string; FirstURL?: string }) => ({
+                    text: t.Text,
+                    url: t.FirstURL,
+                  })),
+                  tip: tavilyKey ? undefined : "Set TAVILY_API_KEY in .env.local for richer search results",
+                }
+              }
+            } catch { /* ignore */ }
+
+            return { error: "Web search unavailable", tip: "Set TAVILY_API_KEY in .env.local" }
+          },
+        }),
+
+        saveMemory: tool({
+          description: "Save an important piece of information to persistent memory. Use this for supplier preferences, pricing insights, business rules, store decisions — anything useful to remember for future conversations.",
+          inputSchema: zodSchema(
+            z.object({
+              content: z.string().describe("The information to remember. Be concise and specific."),
+            })
+          ),
+          execute: async ({ content }) => {
+            await saveAgentMemory(userId, content)
+            return { saved: true, content }
+          },
+        }),
+
         initiateProcurement: tool({
           description:
             "Initiate an autonomous purchase order for an inventory item. Use this when the user confirms they want to proceed with a purchase.",
-          parameters: z.object({
-            inventoryItemId: z.string().describe("The ID of the inventory item to reorder"),
-            supplier: z.string().describe("Chosen supplier name"),
-            qty: z.number().int().positive().describe("Quantity to order"),
-            unitCostUsdc: z.number().positive().describe("Agreed price per unit in USDC"),
-            supplierAddress: z
-              .string()
-              .regex(/^0x[a-fA-F0-9]{40}$/)
-              .optional()
-              .describe("Supplier EVM wallet address for USDC payment (0x...). Omit if unknown."),
-          }),
+          inputSchema: zodSchema(
+            z.object({
+              inventoryItemId: z.string().describe("The ID of the inventory item to reorder"),
+              supplier: z.string().describe("Chosen supplier name"),
+              qty: z.number().int().positive().describe("Quantity to order"),
+              unitCostUsdc: z.number().positive().describe("Agreed price per unit in USDC"),
+              supplierAddress: z
+                .string()
+                .regex(/^0x[a-fA-F0-9]{40}$/)
+                .optional()
+                .describe("Supplier EVM wallet address for USDC payment (0x...). Omit if unknown."),
+            })
+          ),
           execute: async ({ inventoryItemId, supplier, qty, unitCostUsdc, supplierAddress }) => {
             const items = await getInventory(userId)
             const item = items.find((i) => i.id === inventoryItemId)

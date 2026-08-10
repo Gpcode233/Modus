@@ -17,6 +17,7 @@ import {
   ToggleOffIcon,
   Delete02Icon,
   AlertCircleIcon,
+  DeliveryBox01Icon,
 } from "@hugeicons/core-free-icons"
 import {
   Dialog,
@@ -32,6 +33,7 @@ interface SettingsFormProps {
   walletAddress: string
   network: string
   spendAuthority: number | null
+  shippingAddress: string | null
 }
 
 function SectionCard({
@@ -123,19 +125,39 @@ function Toggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void 
   )
 }
 
-export function SettingsForm({ walletAddress, network, spendAuthority }: SettingsFormProps) {
+export function SettingsForm({ walletAddress, network, spendAuthority, shippingAddress }: SettingsFormProps) {
   const router = useRouter()
   const { logout } = usePrivy()
   const [authority, setAuthority] = useState(spendAuthority != null ? String(spendAuthority) : "")
   const [threshold, setThreshold] = useState("40")
   const [lowStockAlerts, setLowStockAlerts] = useState(true)
   const [criticalOnly, setCriticalOnly] = useState(false)
+  const [shipping, setShipping] = useState(shippingAddress ?? "")
+  const [savingShipping, setSavingShipping] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmText, setConfirmText] = useState("")
 
   function handleSave() {
     toast.success("Settings saved")
+  }
+
+  async function handleSaveShipping() {
+    if (!shipping.trim()) return
+    setSavingShipping(true)
+    try {
+      const res = await fetch("/api/user/shipping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: shipping }),
+      })
+      if (!res.ok) throw new Error("Failed to save")
+      toast.success("Shipping address saved — agent is now aware of it")
+    } catch {
+      toast.error("Failed to save shipping address")
+    } finally {
+      setSavingShipping(false)
+    }
   }
 
   async function handleDeleteAccount() {
@@ -283,6 +305,34 @@ export function SettingsForm({ walletAddress, network, spendAuthority }: Setting
               <p className="text-xs text-gray-500">Only alert when stock is below 40% of reorder point</p>
             </div>
             <Toggle enabled={criticalOnly} onToggle={() => setCriticalOnly((v) => !v)} />
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Shipping Address */}
+      <SectionCard
+        icon={DeliveryBox01Icon}
+        title="Shipping Address"
+        description="Where orders should be shipped. The agent knows this and will include it in procurement decisions."
+      >
+        <div className="flex flex-col gap-3">
+          <textarea
+            rows={3}
+            placeholder={"123 Main St\nSan Francisco, CA 94105\nUnited States"}
+            value={shipping}
+            onChange={(e) => setShipping(e.target.value)}
+            className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-800 placeholder-gray-400 outline-none transition-colors focus:border-green-400 focus:bg-white"
+          />
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleSaveShipping}
+              disabled={savingShipping || !shipping.trim()}
+              className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-green-700 active:scale-95 disabled:opacity-40"
+            >
+              <HugeiconsIcon icon={CheckmarkCircle01Icon} size={15} color="currentColor" strokeWidth={2} />
+              {savingShipping ? "Saving…" : "Save address"}
+            </button>
           </div>
         </div>
       </SectionCard>

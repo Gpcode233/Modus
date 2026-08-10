@@ -73,6 +73,50 @@ export async function getSpendAuthority(userId: string): Promise<number | null> 
   return v != null ? parseFloat(v) : null
 }
 
+// ---------------------------------------------------------------------------
+// Shipping address
+// ---------------------------------------------------------------------------
+
+export async function getShippingAddress(userId: string): Promise<string | null> {
+  await ensureUser(userId)
+  const row = await db.select({ shippingAddress: users.shippingAddress }).from(users).where(eq(users.id, userId)).limit(1)
+  return row[0]?.shippingAddress ?? null
+}
+
+export async function setShippingAddress(userId: string, address: string): Promise<void> {
+  await ensureUser(userId)
+  await db.update(users).set({ shippingAddress: address, updatedAt: new Date() }).where(eq(users.id, userId))
+}
+
+// ---------------------------------------------------------------------------
+// Agent memory
+// ---------------------------------------------------------------------------
+
+export async function getAgentMemories(userId: string): Promise<AgentMemoryEntry[]> {
+  await ensureUser(userId)
+  const row = await db.select({ agentMemory: users.agentMemory }).from(users).where(eq(users.id, userId)).limit(1)
+  return (row[0]?.agentMemory as AgentMemoryEntry[] | null) ?? []
+}
+
+export async function saveAgentMemory(userId: string, content: string): Promise<void> {
+  await ensureUser(userId)
+  const existing = await getAgentMemories(userId)
+  const updated: AgentMemoryEntry[] = [
+    ...existing.slice(-49),
+    { content, savedAt: new Date().toISOString() },
+  ]
+  await db.update(users).set({ agentMemory: updated, updatedAt: new Date() }).where(eq(users.id, userId))
+}
+
+export async function clearAgentMemories(userId: string): Promise<void> {
+  await ensureUser(userId)
+  await db.update(users).set({ agentMemory: [], updatedAt: new Date() }).where(eq(users.id, userId))
+}
+
+// ---------------------------------------------------------------------------
+// Delete user
+// ---------------------------------------------------------------------------
+
 export async function deleteUser(userId: string): Promise<void> {
   await db.delete(chatRateLimits).where(eq(chatRateLimits.userId, userId))
   await db.delete(users).where(eq(users.id, userId))

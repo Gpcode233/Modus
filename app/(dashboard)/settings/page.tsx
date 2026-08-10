@@ -1,5 +1,5 @@
 import { getAgentAddress, getNetworkName, isPaymentConfigured } from "@/lib/payments"
-import { getSpendAuthority } from "@/lib/store"
+import { getSpendAuthority, getShippingAddress } from "@/lib/store"
 import { getUserIdFromCookies } from "@/lib/auth-server"
 import { redirect } from "next/navigation"
 import { SettingsForm } from "./settings-form"
@@ -10,7 +10,10 @@ export default async function SettingsPage() {
 
   const address = isPaymentConfigured() ? (getAgentAddress() ?? "") : ""
   const network = getNetworkName()
-  const spendAuthority = await getSpendAuthority(userId)
+  const [spendAuthority, shippingAddress] = await Promise.all([
+    getSpendAuthority(userId),
+    getShippingAddress(userId),
+  ])
 
   return (
     <div className="h-full overflow-y-auto flex flex-col gap-6 p-8">
@@ -25,6 +28,7 @@ export default async function SettingsPage() {
         walletAddress={address}
         network={network}
         spendAuthority={spendAuthority}
+        shippingAddress={shippingAddress}
       />
     </div>
   )
