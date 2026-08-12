@@ -25,7 +25,7 @@ export function LoginForm({ className, mode = "signin", ...props }: React.Compon
 
   const { initOAuth } = useLoginWithOAuth({
     onComplete: () => router.push("/accounts"),
-    onError: (err) => setError(err instanceof Error ? err.message : "Google login failed"),
+    onError: (err) => setError(String(err)),
   })
 
   const sending = emailState.status === "sending-code"
