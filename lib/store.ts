@@ -26,8 +26,15 @@ async function ensureUser(userId: string): Promise<void> {
     .limit(1)
 
   if (!row[0]?.walletAddress) {
-    const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts")
-    const privateKey = generatePrivateKey()
+    const { privateKeyToAccount } = await import("viem/accounts")
+    const isOwner = process.env.OWNER_USER_ID && userId === process.env.OWNER_USER_ID
+    let privateKey: `0x${string}`
+    if (isOwner && process.env.ARC_PRIVATE_KEY) {
+      privateKey = process.env.ARC_PRIVATE_KEY as `0x${string}`
+    } else {
+      const { generatePrivateKey } = await import("viem/accounts")
+      privateKey = generatePrivateKey()
+    }
     const account = privateKeyToAccount(privateKey)
     await db
       .update(users)
@@ -38,6 +45,12 @@ async function ensureUser(userId: string): Promise<void> {
 
 export async function getUserWallet(userId: string): Promise<{ address: string; privateKey: string } | null> {
   await ensureUser(userId)
+  if (process.env.OWNER_USER_ID && userId === process.env.OWNER_USER_ID && process.env.ARC_PRIVATE_KEY) {
+    const { privateKeyToAccount } = await import("viem/accounts")
+    const privateKey = process.env.ARC_PRIVATE_KEY as `0x${string}`
+    const account = privateKeyToAccount(privateKey)
+    return { address: account.address, privateKey }
+  }
   const row = await db
     .select({ walletAddress: users.walletAddress, walletPrivateKey: users.walletPrivateKey })
     .from(users)
