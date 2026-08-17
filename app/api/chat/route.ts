@@ -27,7 +27,7 @@ const provider = createGroq({
   apiKey: process.env.GROQ_API_KEY ?? "",
 })
 
-const MODEL = process.env.AI_MODEL ?? "llama-3.3-70b-versatile"
+const MODEL = process.env.AI_MODEL ?? "deepseek/deepseek-r1:free"
 
 const BASE_SYSTEM_PROMPT = `You are the Modus autonomous procurement agent — an AI that manages inventory and supplier purchasing for businesses using USDC on Arc L1 (Circle's blockchain).
 
